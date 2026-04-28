@@ -274,6 +274,26 @@
   }
   .del-site-btn:hover { background: var(--red-dim); color: var(--red); }
 
+  /* ---- SAVE INDICATOR ---- */
+  .save-toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: var(--surface2);
+    border: 1px solid var(--border-hover);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 7px 14px;
+    border-radius: 99px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.25s, transform 0.25s;
+    pointer-events: none;
+    z-index: 99;
+  }
+  .save-toast.show { opacity: 1; transform: translateY(0); }
+
   /* ---- EMPTY STATE ---- */
   .no-sites {
     text-align: center;
@@ -339,11 +359,64 @@
     <small>Escribe el nombre de un sitio arriba y agrégalo para empezar.</small>
   </div>
 
-  <footer>los datos se guardan solo mientras tengas la pestaña abierta</footer>
+  <footer>los datos se guardan automáticamente en tu navegador 💾</footer>
 </div>
 
+<!-- Toast de guardado -->
+<div class="save-toast" id="save-toast">✓ guardado</div>
+
 <script>
+// ---- STORAGE KEY ----
+const STORAGE_KEY = 'alyax_dashboard_v1';
+
+// ---- LOAD STATE ----
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Restaurar campos necesarios
+      state.sites = parsed.sites || [];
+      state.nextSiteId = parsed.nextSiteId || 1;
+      state.nextTxId = parsed.nextTxId || 1;
+    }
+  } catch(e) {
+    console.warn('No se pudo cargar el estado guardado:', e);
+  }
+}
+
+// ---- SAVE STATE ----
+let saveTimer = null;
+function saveState() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        sites: state.sites,
+        nextSiteId: state.nextSiteId,
+        nextTxId: state.nextTxId
+      }));
+      showToast();
+    } catch(e) {
+      console.warn('No se pudo guardar el estado:', e);
+    }
+  }, 300);
+}
+
+// ---- TOAST ----
+let toastTimer = null;
+function showToast() {
+  const toast = document.getElementById('save-toast');
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// ---- STATE ----
 const state = { sites: [], nextSiteId: 1, nextTxId: 1 };
+
+// Cargar datos guardados antes de renderizar
+loadState();
 
 const fmt = n => '$' + Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -375,6 +448,7 @@ function addSite() {
   state.sites.push({ id: state.nextSiteId++, name, txs: [], open: true });
   inp.value = '';
   render();
+  saveState();
 }
 
 document.getElementById('new-site-input').addEventListener('keydown', e => { if (e.key === 'Enter') addSite(); });
@@ -383,6 +457,7 @@ function deleteSite(id) {
   if (!confirm('¿Eliminar este sitio y todos sus movimientos?')) return;
   state.sites = state.sites.filter(s => s.id !== id);
   render();
+  saveState();
 }
 
 function addTx(siteId) {
@@ -402,12 +477,14 @@ function addTx(siteId) {
   document.getElementById('d-amt-' + siteId).value = '';
   document.getElementById('d-note-' + siteId).value = '';
   render();
+  saveState();
 }
 
 function deleteTx(siteId, txId) {
   const site = state.sites.find(s => s.id === siteId);
   site.txs = site.txs.filter(t => t.id !== txId);
   render();
+  saveState();
 }
 
 function toggleSite(id) {
@@ -417,6 +494,7 @@ function toggleSite(id) {
   const chev = document.getElementById('chev-' + id);
   body.classList.toggle('open', site.open);
   chev.classList.toggle('open', site.open);
+  saveState(); // guardar también el estado abierto/cerrado
 }
 
 function render() {
@@ -426,10 +504,6 @@ function render() {
   noMsg.style.display = state.sites.length ? 'none' : 'block';
 
   const today = new Date().toISOString().slice(0, 10);
-
-  // Preserve open states
-  const openMap = {};
-  state.sites.forEach(s => openMap[s.id] = s.open);
 
   container.innerHTML = '';
   state.sites.forEach(site => {
@@ -486,7 +560,6 @@ function render() {
     `;
     container.appendChild(block);
 
-    // Enter key on amount
     document.getElementById('d-amt-' + site.id).addEventListener('keydown', e => { if (e.key === 'Enter') addTx(site.id); });
     document.getElementById('d-note-' + site.id).addEventListener('keydown', e => { if (e.key === 'Enter') addTx(site.id); });
   });
