@@ -84,6 +84,58 @@
   .card-value.neutral { color: var(--text); }
   .card-sub { font-size: 11px; color: var(--text-dim); margin-top: 6px; font-family: var(--mono); }
 
+  /* ---- CRYPTO ---- */
+  .crypto-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 2rem;
+    overflow: hidden;
+  }
+  .crypto-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .crypto-title { font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .crypto-title .site-dot { background: var(--green); }
+  .crypto-status { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .btn-refresh {
+    background: none;
+    border: 1px solid var(--border-hover);
+    color: var(--text-muted);
+    border-radius: 99px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .btn-refresh:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .crypto-totals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-bottom: 1px solid var(--border);
+  }
+  .crypto-totals > div { padding: 0.85rem 1.25rem; border-right: 1px solid var(--border); }
+  .crypto-totals > div:last-child { border-right: none; }
+  .ct-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
+  .ct-value { font-family: var(--mono); font-size: 18px; font-weight: 500; letter-spacing: -0.5px; }
+  .ct-value.up { color: var(--green); }
+  .ct-value.down { color: var(--red); }
+  .coin-sym { font-weight: 500; font-size: 13px; }
+  .coin-sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  .chg-up { font-family: var(--mono); font-size: 13px; color: var(--green); }
+  .chg-down { font-family: var(--mono); font-size: 13px; color: var(--red); }
+  .chg-sub { font-family: var(--mono); font-size: 11px; opacity: 0.8; margin-top: 2px; }
+  .inp-coin { width: 150px; }
+  .inp-usd { width: 130px; }
+
   /* ---- ADD SITE ---- */
   .add-site-row {
     display: flex;
@@ -190,11 +242,12 @@
     padding: 3px 9px;
     border-radius: 99px;
   }
-  .badge-dep { background: var(--green-dim); color: var(--green); }
-  .badge-ret { background: var(--red-dim); color: var(--red); }
+  /* Depósito = rojo, Retiro = verde */
+  .badge-dep { background: var(--red-dim); color: var(--red); }
+  .badge-ret { background: var(--green-dim); color: var(--green); }
 
-  .amount-dep { font-family: var(--mono); color: var(--green); font-size: 13px; }
-  .amount-ret { font-family: var(--mono); color: var(--red); font-size: 13px; }
+  .amount-dep { font-family: var(--mono); color: var(--red); font-size: 13px; }
+  .amount-ret { font-family: var(--mono); color: var(--green); font-size: 13px; }
   .tx-note { color: var(--text-muted); font-size: 12px; }
 
   .del-btn {
@@ -261,6 +314,7 @@
     transition: background 0.15s, border-color 0.15s;
   }
   .btn-add-tx:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .btn-add-tx:disabled { opacity: 0.5; cursor: wait; }
 
   .del-site-btn {
     background: none;
@@ -292,6 +346,7 @@
     pointer-events: none;
     z-index: 99;
   }
+  .save-toast.err { color: var(--red); }
   .save-toast.show { opacity: 1; transform: translateY(0); }
 
   /* ---- EMPTY STATE ---- */
@@ -319,6 +374,8 @@
     .summary .card:last-child { grid-column: span 2; }
     header { flex-direction: column; align-items: flex-start; gap: 6px; }
     .card-value { font-size: 20px; }
+    .crypto-totals > div { padding: 0.75rem; }
+    .ct-value { font-size: 14px; }
   }
 </style>
 </head>
@@ -333,18 +390,43 @@
   <div class="summary">
     <div class="card">
       <div class="card-label">Total depositado</div>
-      <div class="card-value green" id="sum-dep">$0.00</div>
+      <div class="card-value red" id="sum-dep">$0.00</div>
       <div class="card-sub" id="sum-dep-count">0 movimientos</div>
     </div>
     <div class="card">
       <div class="card-label">Total retirado</div>
-      <div class="card-value red" id="sum-ret">$0.00</div>
+      <div class="card-value green" id="sum-ret">$0.00</div>
       <div class="card-sub" id="sum-ret-count">0 movimientos</div>
     </div>
     <div class="card">
       <div class="card-label">Balance neto</div>
       <div class="card-value neutral" id="sum-net">$0.00</div>
       <div class="card-sub" id="sum-sites-count">0 sitios</div>
+    </div>
+  </div>
+
+  <!-- ---- CRIPTO ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Cripto</div>
+      <div class="crypto-status">
+        <span id="price-status">cargando precios…</span>
+        <button class="btn-refresh" onclick="refreshPrices(true)" title="Actualizar precios">↻ actualizar</button>
+      </div>
+    </div>
+
+    <div class="crypto-totals">
+      <div><div class="ct-label">Invertido</div><div class="ct-value" id="c-invested">$0.00</div></div>
+      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="c-value">$0.00</div></div>
+      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="c-pnl">$0.00</div></div>
+    </div>
+
+    <div class="tx-table-wrap" id="holdings-wrap"></div>
+
+    <div class="add-tx-form">
+      <select class="inp-coin" id="h-coin"></select>
+      <input class="inp-usd" type="number" id="h-usd" placeholder="Monto en USD" min="0" step="0.01" />
+      <button class="btn-add-tx" id="h-btn" onclick="addHolding()">+ Agregar</button>
     </div>
   </div>
 
@@ -369,16 +451,40 @@
 // ---- STORAGE KEY ----
 const STORAGE_KEY = 'alyax_dashboard_v1';
 
+// ---- MONEDAS DISPONIBLES (id de CoinGecko) ----
+const COINS = [
+  { id: 'bitcoin',      sym: 'BTC',  name: 'Bitcoin' },
+  { id: 'ethereum',     sym: 'ETH',  name: 'Ethereum' },
+  { id: 'litecoin',     sym: 'LTC',  name: 'Litecoin' },
+  { id: 'solana',       sym: 'SOL',  name: 'Solana' },
+  { id: 'tether',       sym: 'USDT', name: 'Tether' },
+  { id: 'usd-coin',     sym: 'USDC', name: 'USD Coin' },
+  { id: 'ripple',       sym: 'XRP',  name: 'XRP' },
+  { id: 'dogecoin',     sym: 'DOGE', name: 'Dogecoin' },
+  { id: 'binancecoin',  sym: 'BNB',  name: 'BNB' },
+  { id: 'tron',         sym: 'TRX',  name: 'TRON' },
+  { id: 'cardano',      sym: 'ADA',  name: 'Cardano' },
+  { id: 'the-open-network', sym: 'TON', name: 'Toncoin' },
+  { id: 'bitcoin-cash', sym: 'BCH',  name: 'Bitcoin Cash' },
+  { id: 'monero',       sym: 'XMR',  name: 'Monero' }
+];
+const coinById = id => COINS.find(c => c.id === id);
+
+// ---- STATE ----
+const state = { sites: [], holdings: [], nextSiteId: 1, nextTxId: 1, nextHoldId: 1 };
+let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
+
 // ---- LOAD STATE ----
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Restaurar campos necesarios
       state.sites = parsed.sites || [];
+      state.holdings = parsed.holdings || [];
       state.nextSiteId = parsed.nextSiteId || 1;
       state.nextTxId = parsed.nextTxId || 1;
+      state.nextHoldId = parsed.nextHoldId || 1;
     }
   } catch(e) {
     console.warn('No se pudo cargar el estado guardado:', e);
@@ -393,8 +499,10 @@ function saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         sites: state.sites,
+        holdings: state.holdings,
         nextSiteId: state.nextSiteId,
-        nextTxId: state.nextTxId
+        nextTxId: state.nextTxId,
+        nextHoldId: state.nextHoldId
       }));
       showToast();
     } catch(e) {
@@ -405,20 +513,21 @@ function saveState() {
 
 // ---- TOAST ----
 let toastTimer = null;
-function showToast() {
+function showToast(msg, isErr) {
   const toast = document.getElementById('save-toast');
+  toast.textContent = msg || '✓ guardado';
+  toast.classList.toggle('err', !!isErr);
   toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), isErr ? 3000 : 1800);
 }
-
-// ---- STATE ----
-const state = { sites: [], nextSiteId: 1, nextTxId: 1 };
 
 // Cargar datos guardados antes de renderizar
 loadState();
 
 const fmt = n => '$' + Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtCoin = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+const fmtPrice = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
 
 const siteBalance = s => s.txs.reduce((a, t) => a + (t.type === 'dep' ? t.amount : -t.amount), 0);
 
@@ -569,11 +678,147 @@ function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// =====================================================
+// ---- CRIPTO ----
+// =====================================================
+const PRICE_API = 'https://api.coingecko.com/api/v3/simple/price';
+
+async function fetchPrices(ids) {
+  const url = PRICE_API + '?vs_currencies=usd&ids=' + encodeURIComponent(ids.join(','));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const out = {};
+  ids.forEach(id => { if (data[id] && typeof data[id].usd === 'number') out[id] = data[id].usd; });
+  return out;
+}
+
+let refreshing = false;
+async function refreshPrices(manual) {
+  if (refreshing) return;
+  const ids = [...new Set(state.holdings.map(h => h.coin))];
+  const statusEl = document.getElementById('price-status');
+  if (!ids.length) { statusEl.textContent = 'sin monedas'; renderCrypto(); return; }
+  refreshing = true;
+  try {
+    const got = await fetchPrices(ids);
+    Object.assign(prices, got);
+    statusEl.textContent = 'actualizado ' + new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer precios:', e);
+    statusEl.textContent = 'error al actualizar precios';
+    if (manual) showToast('No se pudieron traer los precios', true);
+  }
+  refreshing = false;
+  renderCrypto();
+}
+
+async function addHolding() {
+  const coinId = document.getElementById('h-coin').value;
+  const usdInp = document.getElementById('h-usd');
+  const usd = parseFloat(usdInp.value);
+  if (isNaN(usd) || usd <= 0) {
+    usdInp.style.borderColor = '#f05b6a';
+    setTimeout(() => usdInp.style.borderColor = '', 1200);
+    return;
+  }
+  const btn = document.getElementById('h-btn');
+  btn.disabled = true;
+  try {
+    const got = await fetchPrices([coinId]);
+    const price = got[coinId];
+    if (!price) throw new Error('sin precio');
+    prices[coinId] = price;
+    state.holdings.push({
+      id: state.nextHoldId++,
+      coin: coinId,
+      usd: Math.round(usd * 100) / 100,
+      amount: usd / price,
+      entryPrice: price,
+      date: new Date().toISOString().slice(0, 10)
+    });
+    usdInp.value = '';
+    renderCrypto();
+    saveState();
+    refreshPrices();
+  } catch(e) {
+    console.warn('Error al agregar moneda:', e);
+    showToast('No se pudo traer el precio, intenta de nuevo', true);
+  }
+  btn.disabled = false;
+}
+
+function deleteHolding(id) {
+  if (!confirm('¿Eliminar esta posición?')) return;
+  state.holdings = state.holdings.filter(h => h.id !== id);
+  renderCrypto();
+  saveState();
+}
+
+function renderCrypto() {
+  const wrap = document.getElementById('holdings-wrap');
+  let invested = 0, value = 0;
+
+  if (!state.holdings.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin monedas. Agrega cuántos USD tienes en una cripto y se calcula la cantidad.</div>';
+  } else {
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Moneda</th><th>Cantidad</th><th>Invertido</th><th>Precio</th><th>Valor actual</th><th>Cambio</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${state.holdings.map(h => {
+            const c = coinById(h.coin) || { sym: h.coin.toUpperCase(), name: h.coin };
+            const p = prices[h.coin];
+            const cur = p != null ? h.amount * p : null;
+            invested += h.usd;
+            if (cur != null) value += cur; else value += h.usd;
+            let chg = '<span class="mono" style="color:var(--text-dim)">—</span>';
+            if (cur != null) {
+              const diff = cur - h.usd;
+              const pct = h.usd ? (diff / h.usd) * 100 : 0;
+              const cls = diff >= 0 ? 'chg-up' : 'chg-down';
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>`;
+            }
+            return `
+              <tr>
+                <td><div class="coin-sym">${escHtml(c.sym)}</div><div class="coin-sub">${escHtml(c.name)} · ${h.date}</div></td>
+                <td class="mono">${fmtCoin(h.amount)} ${escHtml(c.sym)}</td>
+                <td class="mono">${fmt(h.usd)}</td>
+                <td class="mono">${p != null ? fmtPrice(p) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) : '—'}</td>
+                <td>${chg}</td>
+                <td><button class="del-btn" onclick="deleteHolding(${h.id})" title="Eliminar">✕</button></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const pnl = value - invested;
+  document.getElementById('c-invested').textContent = fmt(invested);
+  document.getElementById('c-value').textContent = fmt(value);
+  const pnlEl = document.getElementById('c-pnl');
+  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+}
+
+// Select de monedas
+document.getElementById('h-coin').innerHTML = COINS.map(c => `<option value="${c.id}">${c.sym} · ${c.name}</option>`).join('');
+document.getElementById('h-usd').addEventListener('keydown', e => { if (e.key === 'Enter') addHolding(); });
+
+// Precios en vivo: cada 60 s y al volver a la pestaña
+setInterval(() => refreshPrices(), 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPrices(); });
+
 // Date label
 const now = new Date();
 document.getElementById('today-label').textContent = now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
 render();
+renderCrypto();
+refreshPrices();
 </script>
 </body>
 </html>
