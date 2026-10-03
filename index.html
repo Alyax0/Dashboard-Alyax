@@ -139,6 +139,10 @@
   .mxn { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
   .header-right { text-align: right; }
 
+  .inp-wname { width: 150px; }
+  .inp-waddr { flex: 1; min-width: 180px; }
+  .addr { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+
   /* ---- ADD SITE ---- */
   .add-site-row {
     display: flex;
@@ -437,6 +441,21 @@
     </div>
   </div>
 
+  <!-- ---- WALLETS ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Wallets</div>
+      <div class="crypto-status"><span id="wallets-count"></span></div>
+    </div>
+    <div class="tx-table-wrap" id="wallets-wrap"></div>
+    <div class="add-tx-form">
+      <input class="inp-wname" type="text" id="w-name" placeholder="Nombre (ej. Metamask)" />
+      <select class="inp-coin" id="w-coin"></select>
+      <input class="inp-waddr" type="text" id="w-addr" placeholder="Dirección pública" />
+      <button class="btn-add-tx" onclick="addWallet()">+ Agregar</button>
+    </div>
+  </div>
+
   <div class="add-site-row">
     <input id="new-site-input" placeholder="Nombre del sitio (Binance, Bet365, PayPal…)" />
     <button class="btn-primary" onclick="addSite()">+ Agregar sitio</button>
@@ -478,7 +497,7 @@ const COINS = [
 const coinById = id => COINS.find(c => c.id === id);
 
 // ---- STATE ----
-const state = { sites: [], holdings: [], nextSiteId: 1, nextTxId: 1, nextHoldId: 1 };
+const state = { sites: [], holdings: [], wallets: [], nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
 let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
 
 // ---- LOAD STATE ----
@@ -492,6 +511,8 @@ function loadState() {
       state.nextSiteId = parsed.nextSiteId || 1;
       state.nextTxId = parsed.nextTxId || 1;
       state.nextHoldId = parsed.nextHoldId || 1;
+      state.wallets = parsed.wallets || [];
+      state.nextWalletId = parsed.nextWalletId || 1;
     }
   } catch(e) {
     console.warn('No se pudo cargar el estado guardado:', e);
@@ -509,7 +530,9 @@ function saveState() {
         holdings: state.holdings,
         nextSiteId: state.nextSiteId,
         nextTxId: state.nextTxId,
-        nextHoldId: state.nextHoldId
+        nextHoldId: state.nextHoldId,
+        wallets: state.wallets,
+        nextWalletId: state.nextWalletId
       }));
       showToast();
     } catch(e) {
@@ -538,8 +561,41 @@ function mergeInto(coinId, usd, price) {
   }
 }
 
+function subtractFrom(coinId, usdValue, price) {
+  const h = state.holdings.find(x => x.coin === coinId);
+  if (!h) return null;
+  let coinAmt = usdValue / price;
+  if (coinAmt > h.amount * 1.001) return null;   // no alcanza
+  if (coinAmt > h.amount) coinAmt = h.amount;
+  const costReduce = h.usd * (coinAmt / h.amount); // costo proporcional
+  h.amount -= coinAmt;
+  h.usd = Math.round((h.usd - costReduce) * 100) / 100;
+  if (h.amount <= 1e-9) state.holdings = state.holdings.filter(x => x !== h);
+  else h.entryPrice = h.usd / h.amount;
+  return { usd: costReduce, amount: coinAmt };
+}
+
 function undoCrypto(c) {
   const h = state.holdings.find(x => x.coin === c.coin);
+  if (c.dir === 'sub') {
+    // era un depósito que restó: se regresa a Cripto
+    if (h) {
+      h.amount += c.amount;
+      h.usd = Math.round((h.usd + c.usd) * 100) / 100;
+      h.entryPrice = h.usd / h.amount;
+    } else {
+      state.holdings.push({
+        id: state.nextHoldId++,
+        coin: c.coin,
+        usd: Math.round(c.usd * 100) / 100,
+        amount: c.amount,
+        entryPrice: c.usd / c.amount,
+        date: new Date().toISOString().slice(0, 10)
+      });
+    }
+    showToast('Se regresó a Cripto');
+    return;
+  }
   if (!h) return;
   h.amount -= c.amount;
   h.usd = Math.round((h.usd - c.usd) * 100) / 100;
@@ -653,22 +709,34 @@ async function addTx(siteId) {
   saveState();
 
   // Automatización: retiro con una cripto en la nota (ej. "ltc") -> se suma a Cripto
-  const coin = type === 'ret' ? coinFromNote(note) : null;
+  const coin = coinFromNote(note);
   if (coin) {
     try {
       const got = await fetchPrices([coin.id]);
       const price = got[coin.id];
       if (!price) throw new Error('sin precio');
       prices[coin.id] = price;
-      mergeInto(coin.id, tx.amount, price);
-      tx.crypto = { coin: coin.id, usd: tx.amount, amount: tx.amount / price };
+      let msg;
+      if (type === 'ret') {
+        mergeInto(coin.id, tx.amount, price);
+        tx.crypto = { coin: coin.id, usd: tx.amount, amount: tx.amount / price };
+        msg = '+' + fmtCoin(tx.crypto.amount) + ' ' + coin.sym + ' sumado a Cripto';
+      } else {
+        const r = subtractFrom(coin.id, tx.amount, price);
+        if (!r) {
+          setTimeout(() => showToast('No tienes suficiente ' + coin.sym + ' en Cripto', true), 450);
+          return;
+        }
+        tx.crypto = { coin: coin.id, usd: r.usd, amount: r.amount, dir: 'sub' };
+        msg = '-' + fmtCoin(r.amount) + ' ' + coin.sym + ' restado de Cripto';
+      }
       renderCrypto();
       saveState();
-      setTimeout(() => showToast('+' + fmtCoin(tx.crypto.amount) + ' ' + coin.sym + ' sumado a Cripto'), 450);
+      setTimeout(() => showToast(msg), 450);
       refreshPrices();
     } catch(e) {
       console.warn('No se pudo sumar a cripto:', e);
-      setTimeout(() => showToast('No se pudo sumar ' + coin.sym + ' a Cripto', true), 450);
+      setTimeout(() => showToast('No se pudo actualizar ' + coin.sym + ' en Cripto', true), 450);
     }
   }
 }
@@ -748,7 +816,7 @@ function render() {
             <option value="ret">Retiro</option>
           </select>
           <input class="inp-amount" type="number" id="d-amt-${site.id}" placeholder="Monto" min="0" step="0.01" />
-          <input class="inp-note" type="text" id="d-note-${site.id}" placeholder="Nota (ej. ltc → suma a Cripto)" />
+          <input class="inp-note" type="text" id="d-note-${site.id}" placeholder="Nota (ej. ltc → mueve Cripto)" />
           <button class="btn-add-tx" onclick="addTx(${site.id})">+ Agregar</button>
         </div>
       </div>
@@ -931,8 +999,80 @@ async function refreshFx() {
   renderCrypto();
 }
 
+// =====================================================
+// ---- WALLETS (direcciones guardadas) ----
+// =====================================================
+function renderWallets() {
+  const wrap = document.getElementById('wallets-wrap');
+  document.getElementById('wallets-count').textContent = state.wallets.length + ' wallet' + (state.wallets.length !== 1 ? 's' : '');
+  if (!state.wallets.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin wallets. Guarda aquí tus direcciones públicas.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Nombre</th><th>Moneda</th><th>Dirección</th><th></th><th></th></tr></thead>
+      <tbody>
+        ${state.wallets.map(w => {
+          const short = w.address.length > 22 ? w.address.slice(0, 10) + '…' + w.address.slice(-8) : w.address;
+          return `
+            <tr>
+              <td class="coin-sym">${escHtml(w.name)}</td>
+              <td class="mono">${escHtml(w.coin)}</td>
+              <td class="addr" title="${escHtml(w.address)}">${escHtml(short)}</td>
+              <td><button class="btn-refresh" onclick="copyAddr(${w.id})">copiar</button></td>
+              <td><button class="del-btn" onclick="deleteWallet(${w.id})" title="Eliminar">✕</button></td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function addWallet() {
+  const nameEl = document.getElementById('w-name');
+  const addrEl = document.getElementById('w-addr');
+  const name = nameEl.value.trim();
+  const address = addrEl.value.trim();
+  const coin = document.getElementById('w-coin').value;
+  if (!name || !address) {
+    (!name ? nameEl : addrEl).style.borderColor = '#f05b6a';
+    setTimeout(() => { nameEl.style.borderColor = ''; addrEl.style.borderColor = ''; }, 1200);
+    return;
+  }
+  state.wallets.push({ id: state.nextWalletId++, name, coin, address });
+  nameEl.value = '';
+  addrEl.value = '';
+  renderWallets();
+  saveState();
+}
+
+function deleteWallet(id) {
+  if (!confirm('¿Eliminar esta wallet?')) return;
+  state.wallets = state.wallets.filter(w => w.id !== id);
+  renderWallets();
+  saveState();
+}
+
+async function copyAddr(id) {
+  const w = state.wallets.find(x => x.id === id);
+  if (!w) return;
+  try {
+    await navigator.clipboard.writeText(w.address);
+  } catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = w.address;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch(_) {}
+    ta.remove();
+  }
+  showToast('✓ dirección copiada');
+}
+
 // Select de monedas
 document.getElementById('h-coin').innerHTML = COINS.map(c => `<option value="${c.id}">${c.sym} · ${c.name}</option>`).join('');
+document.getElementById('w-coin').innerHTML = COINS.map(c => `<option value="${c.sym}">${c.sym}</option>`).join('') + '<option value="OTRA">OTRA</option>';
+document.getElementById('w-addr').addEventListener('keydown', e => { if (e.key === 'Enter') addWallet(); });
 document.getElementById('h-usd').addEventListener('keydown', e => { if (e.key === 'Enter') addHolding(); });
 
 // Precios en vivo: cada 60 s y al volver a la pestaña
@@ -946,6 +1086,7 @@ document.getElementById('today-label').textContent = now.toLocaleDateString('es-
 updateFxLabel();
 render();
 renderCrypto();
+renderWallets();
 refreshPrices();
 </script>
 </body>
