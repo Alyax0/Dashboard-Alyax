@@ -518,6 +518,61 @@ function saveState() {
   }, 300);
 }
 
+// ---- Posiciones: una sola fila por moneda ----
+function mergeInto(coinId, usd, price) {
+  const add = usd / price;
+  const h = state.holdings.find(x => x.coin === coinId);
+  if (h) {
+    h.amount += add;
+    h.usd = Math.round((h.usd + usd) * 100) / 100;
+    h.entryPrice = h.usd / h.amount; // precio promedio de compra
+  } else {
+    state.holdings.push({
+      id: state.nextHoldId++,
+      coin: coinId,
+      usd: Math.round(usd * 100) / 100,
+      amount: add,
+      entryPrice: price,
+      date: new Date().toISOString().slice(0, 10)
+    });
+  }
+}
+
+function undoCrypto(c) {
+  const h = state.holdings.find(x => x.coin === c.coin);
+  if (!h) return;
+  h.amount -= c.amount;
+  h.usd = Math.round((h.usd - c.usd) * 100) / 100;
+  if (h.amount <= 1e-9 || h.usd <= 0.005) {
+    state.holdings = state.holdings.filter(x => x !== h);
+  } else {
+    h.entryPrice = h.usd / h.amount;
+  }
+  showToast('Se restó de Cripto');
+}
+
+// Une posiciones repetidas de la misma moneda (datos guardados antes)
+function mergeHoldings() {
+  const out = [];
+  state.holdings.forEach(h => {
+    const f = out.find(x => x.coin === h.coin);
+    if (f) {
+      f.amount += h.amount;
+      f.usd = Math.round((f.usd + h.usd) * 100) / 100;
+      f.entryPrice = f.usd / f.amount;
+      if (h.date < f.date) f.date = h.date;
+    } else out.push(h);
+  });
+  state.holdings = out;
+}
+
+// Detecta una cripto en la nota (primera palabra: ltc, trx, bitcoin…)
+function coinFromNote(note) {
+  const t = (note || '').toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean)[0];
+  if (!t) return null;
+  return COINS.find(c => c.sym.toLowerCase() === t || c.id === t || c.name.toLowerCase() === t) || null;
+}
+
 // ---- TOAST ----
 let toastTimer = null;
 function showToast(msg, isErr) {
@@ -531,6 +586,7 @@ function showToast(msg, isErr) {
 
 // Cargar datos guardados antes de renderizar
 loadState();
+mergeHoldings();
 
 const fmt = n => '$' + Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCoin = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
@@ -576,7 +632,7 @@ function deleteSite(id) {
   saveState();
 }
 
-function addTx(siteId) {
+async function addTx(siteId) {
   const site = state.sites.find(s => s.id === siteId);
   const date = document.getElementById('d-date-' + siteId).value;
   const type = document.getElementById('d-type-' + siteId).value;
@@ -588,16 +644,39 @@ function addTx(siteId) {
     setTimeout(() => document.getElementById('d-amt-' + siteId).style.borderColor = '', 1200);
     return;
   }
-  site.txs.push({ id: state.nextTxId++, date, type, amount: Math.round(amount * 100) / 100, note });
+  const tx = { id: state.nextTxId++, date, type, amount: Math.round(amount * 100) / 100, note };
+  site.txs.push(tx);
   site.txs.sort((a, b) => b.date.localeCompare(a.date));
   document.getElementById('d-amt-' + siteId).value = '';
   document.getElementById('d-note-' + siteId).value = '';
   render();
   saveState();
+
+  // Automatización: retiro con una cripto en la nota (ej. "ltc") -> se suma a Cripto
+  const coin = type === 'ret' ? coinFromNote(note) : null;
+  if (coin) {
+    try {
+      const got = await fetchPrices([coin.id]);
+      const price = got[coin.id];
+      if (!price) throw new Error('sin precio');
+      prices[coin.id] = price;
+      mergeInto(coin.id, tx.amount, price);
+      tx.crypto = { coin: coin.id, usd: tx.amount, amount: tx.amount / price };
+      renderCrypto();
+      saveState();
+      setTimeout(() => showToast('+' + fmtCoin(tx.crypto.amount) + ' ' + coin.sym + ' sumado a Cripto'), 450);
+      refreshPrices();
+    } catch(e) {
+      console.warn('No se pudo sumar a cripto:', e);
+      setTimeout(() => showToast('No se pudo sumar ' + coin.sym + ' a Cripto', true), 450);
+    }
+  }
 }
 
 function deleteTx(siteId, txId) {
   const site = state.sites.find(s => s.id === siteId);
+  const gone = site.txs.find(t => t.id === txId);
+  if (gone && gone.crypto) { undoCrypto(gone.crypto); renderCrypto(); }
   site.txs = site.txs.filter(t => t.id !== txId);
   render();
   saveState();
@@ -669,7 +748,7 @@ function render() {
             <option value="ret">Retiro</option>
           </select>
           <input class="inp-amount" type="number" id="d-amt-${site.id}" placeholder="Monto" min="0" step="0.01" />
-          <input class="inp-note" type="text" id="d-note-${site.id}" placeholder="Nota (opcional)" />
+          <input class="inp-note" type="text" id="d-note-${site.id}" placeholder="Nota (ej. ltc → suma a Cripto)" />
           <button class="btn-add-tx" onclick="addTx(${site.id})">+ Agregar</button>
         </div>
       </div>
@@ -737,14 +816,7 @@ async function addHolding() {
     const price = got[coinId];
     if (!price) throw new Error('sin precio');
     prices[coinId] = price;
-    state.holdings.push({
-      id: state.nextHoldId++,
-      coin: coinId,
-      usd: Math.round(usd * 100) / 100,
-      amount: usd / price,
-      entryPrice: price,
-      date: new Date().toISOString().slice(0, 10)
-    });
+    mergeInto(coinId, usd, price);
     usdInp.value = '';
     renderCrypto();
     saveState();
