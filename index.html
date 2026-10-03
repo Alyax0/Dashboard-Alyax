@@ -136,6 +136,9 @@
   .inp-coin { width: 150px; }
   .inp-usd { width: 130px; }
 
+  .mxn { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .header-right { text-align: right; }
+
   /* ---- ADD SITE ---- */
   .add-site-row {
     display: flex;
@@ -370,6 +373,7 @@
   }
 
   @media (max-width: 600px) {
+    .header-right { text-align: left; }
     .summary { grid-template-columns: 1fr 1fr; }
     .summary .card:last-child { grid-column: span 2; }
     header { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -384,7 +388,10 @@
 
   <header>
     <div class="logo">Dashboard<span> </span>Alyax</div>
-    <div class="date-label" id="today-label"></div>
+    <div class="header-right">
+      <div class="date-label" id="today-label"></div>
+      <div class="date-label" id="fx-label" style="margin-top:4px"></div>
+    </div>
   </header>
 
   <div class="summary">
@@ -416,9 +423,9 @@
     </div>
 
     <div class="crypto-totals">
-      <div><div class="ct-label">Invertido</div><div class="ct-value" id="c-invested">$0.00</div></div>
-      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="c-value">$0.00</div></div>
-      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="c-pnl">$0.00</div></div>
+      <div><div class="ct-label">Invertido</div><div class="ct-value" id="c-invested">$0.00</div><div class="mxn" id="c-invested-mx"></div></div>
+      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="c-value">$0.00</div><div class="mxn" id="c-value-mx"></div></div>
+      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="c-pnl">$0.00</div><div class="mxn" id="c-pnl-mx"></div></div>
     </div>
 
     <div class="tx-table-wrap" id="holdings-wrap"></div>
@@ -540,14 +547,14 @@ function updateSummary() {
   const net = dep - ret;
 
   document.getElementById('sum-dep').textContent = fmt(dep);
-  document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '');
+  document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '') + mxTxt(dep);
   document.getElementById('sum-ret').textContent = fmt(ret);
-  document.getElementById('sum-ret-count').textContent = rets.length + ' movimiento' + (rets.length !== 1 ? 's' : '');
+  document.getElementById('sum-ret-count').textContent = rets.length + ' movimiento' + (rets.length !== 1 ? 's' : '') + mxTxt(ret);
 
   const netEl = document.getElementById('sum-net');
   netEl.textContent = (net >= 0 ? '+' : '-') + fmt(net);
   netEl.className = 'card-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : 'neutral');
-  document.getElementById('sum-sites-count').textContent = state.sites.length + ' sitio' + (state.sites.length !== 1 ? 's' : '');
+  document.getElementById('sum-sites-count').textContent = state.sites.length + ' sitio' + (state.sites.length !== 1 ? 's' : '') + mxTxt(net, true);
 }
 
 function addSite() {
@@ -698,6 +705,7 @@ async function refreshPrices(manual) {
   if (refreshing) return;
   const ids = [...new Set(state.holdings.map(h => h.coin))];
   const statusEl = document.getElementById('price-status');
+  refreshFx();
   if (!ids.length) { statusEl.textContent = 'sin monedas'; renderCrypto(); return; }
   refreshing = true;
   try {
@@ -787,7 +795,7 @@ function renderCrypto() {
                 <td class="mono">${fmtCoin(h.amount)} ${escHtml(c.sym)}</td>
                 <td class="mono">${fmt(h.usd)}</td>
                 <td class="mono">${p != null ? fmtPrice(p) : '—'}</td>
-                <td class="mono">${cur != null ? fmt(cur) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) + (fx ? '<div class="mxn">' + mxOnly(cur) + '</div>' : '') : '—'}</td>
                 <td>${chg}</td>
                 <td><button class="del-btn" onclick="deleteHolding(${h.id})" title="Eliminar">✕</button></td>
               </tr>`;
@@ -802,6 +810,53 @@ function renderCrypto() {
   const pnlEl = document.getElementById('c-pnl');
   pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
   pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  document.getElementById('c-invested-mx').textContent = mxOnly(invested);
+  document.getElementById('c-value-mx').textContent = mxOnly(value);
+  document.getElementById('c-pnl-mx').textContent = mxOnly(pnl, true);
+}
+
+// =====================================================
+// ---- TIPO DE CAMBIO USD → MXN ----
+// =====================================================
+let fx = null; // pesos MXN por 1 USD
+try {
+  const saved = JSON.parse(localStorage.getItem('alyax_fx') || 'null');
+  if (saved && typeof saved.rate === 'number') fx = saved.rate;
+} catch(e) {}
+
+function mxOnly(n, signed) {
+  if (!fx) return '';
+  const v = Math.abs(n) * fx;
+  return (signed ? (n >= 0 ? '+' : '-') : '') + 'MX$' + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+const mxTxt = (n, signed) => fx ? ' · ' + mxOnly(n, signed) : '';
+
+function updateFxLabel() {
+  document.getElementById('fx-label').textContent = fx ? '1 USD = MX$' + fx.toFixed(2) : '';
+}
+
+async function getFxRate() {
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const data = await res.json();
+    if (data && data.rates && typeof data.rates.MXN === 'number') return data.rates.MXN;
+  } catch(e) { console.warn('FX principal falló:', e); }
+  const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=MXN');
+  const data = await res.json();
+  if (data && data.rates && typeof data.rates.MXN === 'number') return data.rates.MXN;
+  throw new Error('sin tipo de cambio');
+}
+
+async function refreshFx() {
+  try {
+    fx = await getFxRate();
+    try { localStorage.setItem('alyax_fx', JSON.stringify({ rate: fx, t: Date.now() })); } catch(e) {}
+  } catch(e) {
+    console.warn('No se pudo actualizar el tipo de cambio:', e);
+  }
+  updateFxLabel();
+  updateSummary();
+  renderCrypto();
 }
 
 // Select de monedas
@@ -816,6 +871,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) refr
 const now = new Date();
 document.getElementById('today-label').textContent = now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+updateFxLabel();
 render();
 renderCrypto();
 refreshPrices();
