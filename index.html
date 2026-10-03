@@ -301,7 +301,7 @@
   .add-tx-form input::placeholder { color: var(--text-dim); }
   .add-tx-form select option { background: #1e222d; }
   .inp-date { width: 130px; }
-  .inp-type { width: 100px; }
+  .inp-type { width: 120px; }
   .inp-amount { width: 110px; }
   .inp-note { flex: 1; min-width: 120px; }
   .btn-add-tx {
@@ -536,7 +536,7 @@ const fmt = n => '$' + Math.abs(n).toLocaleString('es-MX', { minimumFractionDigi
 const fmtCoin = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
 const fmtPrice = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
 
-const siteBalance = s => s.txs.reduce((a, t) => a + (t.type === 'dep' ? t.amount : -t.amount), 0);
+const siteBalance = s => s.txs.reduce((a, t) => a + (t.type === 'ret' ? t.amount : -t.amount), 0);
 
 function updateSummary() {
   const allTx = state.sites.flatMap(s => s.txs);
@@ -544,7 +544,7 @@ function updateSummary() {
   const rets = allTx.filter(t => t.type === 'ret');
   const dep = deps.reduce((a, t) => a + t.amount, 0);
   const ret = rets.reduce((a, t) => a + t.amount, 0);
-  const net = dep - ret;
+  const net = ret - dep;
 
   document.getElementById('sum-dep').textContent = fmt(dep);
   document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '') + mxTxt(dep);
