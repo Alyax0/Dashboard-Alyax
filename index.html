@@ -139,6 +139,9 @@
   .mxn { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
   .header-right { text-align: right; }
 
+  .crypto-head.collapsed { border-bottom: none; }
+  .crypto-head.clickable { cursor: pointer; user-select: none; }
+  .crypto-head.clickable:hover { background: rgba(255,255,255,0.02); }
   .inp-wname { width: 150px; }
   .inp-waddr { flex: 1; min-width: 180px; }
   .addr { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
@@ -443,16 +446,21 @@
 
   <!-- ---- WALLETS ---- -->
   <div class="crypto-block">
-    <div class="crypto-head">
+    <div class="crypto-head clickable" id="wallets-head" onclick="toggleWallets()">
       <div class="crypto-title"><span class="site-dot"></span>Wallets</div>
-      <div class="crypto-status"><span id="wallets-count"></span></div>
+      <div class="crypto-status">
+        <span id="wallets-count"></span>
+        <span class="chevron open" id="wallets-chev">▼</span>
+      </div>
     </div>
+    <div class="site-body open" id="wallets-body">
     <div class="tx-table-wrap" id="wallets-wrap"></div>
     <div class="add-tx-form">
       <input class="inp-wname" type="text" id="w-name" placeholder="Nombre (ej. Metamask)" />
       <select class="inp-coin" id="w-coin"></select>
       <input class="inp-waddr" type="text" id="w-addr" placeholder="Dirección pública" />
       <button class="btn-add-tx" onclick="addWallet()">+ Agregar</button>
+    </div>
     </div>
   </div>
 
@@ -497,7 +505,7 @@ const COINS = [
 const coinById = id => COINS.find(c => c.id === id);
 
 // ---- STATE ----
-const state = { sites: [], holdings: [], wallets: [], nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
+const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
 let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
 
 // ---- LOAD STATE ----
@@ -512,6 +520,7 @@ function loadState() {
       state.nextTxId = parsed.nextTxId || 1;
       state.nextHoldId = parsed.nextHoldId || 1;
       state.wallets = parsed.wallets || [];
+      state.walletsOpen = parsed.walletsOpen !== false;
       state.nextWalletId = parsed.nextWalletId || 1;
     }
   } catch(e) {
@@ -532,6 +541,7 @@ function saveState() {
         nextTxId: state.nextTxId,
         nextHoldId: state.nextHoldId,
         wallets: state.wallets,
+        walletsOpen: state.walletsOpen,
         nextWalletId: state.nextWalletId
       }));
       showToast();
@@ -1002,7 +1012,20 @@ async function refreshFx() {
 // =====================================================
 // ---- WALLETS (direcciones guardadas) ----
 // =====================================================
+function applyWalletsOpen() {
+  document.getElementById('wallets-body').classList.toggle('open', state.walletsOpen);
+  document.getElementById('wallets-chev').classList.toggle('open', state.walletsOpen);
+  document.getElementById('wallets-head').classList.toggle('collapsed', !state.walletsOpen);
+}
+
+function toggleWallets() {
+  state.walletsOpen = !state.walletsOpen;
+  applyWalletsOpen();
+  saveState();
+}
+
 function renderWallets() {
+  applyWalletsOpen();
   const wrap = document.getElementById('wallets-wrap');
   document.getElementById('wallets-count').textContent = state.wallets.length + ' wallet' + (state.wallets.length !== 1 ? 's' : '');
   if (!state.wallets.length) {
