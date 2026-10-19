@@ -142,9 +142,36 @@
   .crypto-head.collapsed { border-bottom: none; }
   .crypto-head.clickable { cursor: pointer; user-select: none; }
   .crypto-head.clickable:hover { background: rgba(255,255,255,0.02); }
+  .inp-sname { flex: 1; min-width: 220px; }
+  .inp-sqty { width: 80px; }
+  .skin-name { font-weight: 500; font-size: 13px; line-height: 1.35; }
   .inp-wname { width: 150px; }
   .inp-waddr { flex: 1; min-width: 180px; }
   .addr { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+
+  /* ---- TICKER (precios en vivo) ---- */
+  .ticker { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; max-width: 860px; margin: 0 auto 1.5rem; }
+  .ticker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); }
+  .ticker-title { font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .ticker-sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 1.6s infinite; flex-shrink: 0; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(46,202,140,0.5); } 70% { box-shadow: 0 0 0 7px rgba(46,202,140,0); } 100% { box-shadow: 0 0 0 0 rgba(46,202,140,0); } }
+  .ticker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .t-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+  .t-right { text-align: right; }
+  .t-price { font-family: var(--mono); font-size: 13px; }
+  .t-chg { font-family: var(--mono); font-size: 11px; margin-top: 2px; }
+  .t-chg.up { color: var(--green); }
+  .t-chg.down { color: var(--red); }
+  .t-price.flash-up { animation: flashUp 1.4s ease-out; }
+  .t-price.flash-down { animation: flashDown 1.4s ease-out; }
+  @keyframes flashUp { from { color: var(--green); text-shadow: 0 0 8px rgba(46,202,140,0.6); } to { color: var(--text); text-shadow: none; } }
+  @keyframes flashDown { from { color: var(--red); text-shadow: 0 0 8px rgba(240,91,106,0.6); } to { color: var(--text); text-shadow: none; } }
+  @media (min-width: 1500px) {
+    .ticker { position: fixed; top: 2rem; left: calc(50% - 734px); width: 280px; margin: 0; max-height: calc(100vh - 4rem); overflow-y: auto; }
+    .ticker-list { display: block; }
+    .t-row:last-child { border-bottom: none; }
+  }
 
   /* ---- ADD SITE ---- */
   .add-site-row {
@@ -391,6 +418,15 @@
 </style>
 </head>
 <body>
+
+<aside class="ticker" id="ticker">
+  <div class="ticker-head">
+    <div class="ticker-title"><span class="live-dot"></span>Precios en vivo</div>
+    <div class="ticker-sub" id="ticker-status">cargando…</div>
+  </div>
+  <div class="ticker-list" id="ticker-list"></div>
+</aside>
+
 <div class="page">
 
   <header>
@@ -464,6 +500,33 @@
     </div>
   </div>
 
+  <!-- ---- SKINS CS2 ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head clickable" id="skins-head" onclick="toggleSkins()">
+      <div class="crypto-title"><span class="site-dot"></span>Skins CS2</div>
+      <div class="crypto-status">
+        <span id="skin-status">sin skins</span>
+        <button class="btn-refresh" onclick="event.stopPropagation(); refreshSkins(true)" title="Actualizar precios">↻ actualizar</button>
+        <span class="chevron open" id="skins-chev">▼</span>
+      </div>
+    </div>
+    <div class="site-body open" id="skins-body">
+      <div class="crypto-totals">
+        <div><div class="ct-label">Invertido</div><div class="ct-value" id="s-invested">$0.00</div><div class="mxn" id="s-invested-mx"></div></div>
+        <div><div class="ct-label">Valor actual</div><div class="ct-value" id="s-value">$0.00</div><div class="mxn" id="s-value-mx"></div></div>
+        <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="s-pnl">$0.00</div><div class="mxn" id="s-pnl-mx"></div></div>
+      </div>
+      <div class="tx-table-wrap" id="skins-wrap"></div>
+      <div class="add-tx-form">
+        <input class="inp-sname" type="text" id="s-name" list="skin-list" placeholder="Skin (ej. AK-47 | Redline (Field-Tested))" autocomplete="off" />
+        <datalist id="skin-list"></datalist>
+        <input class="inp-sqty" type="number" id="s-qty" placeholder="Cant." min="1" step="1" value="1" />
+        <input class="inp-usd" type="number" id="s-price" placeholder="Precio c/u USD" min="0" step="0.01" />
+        <button class="btn-add-tx" id="s-btn" onclick="addSkin()">+ Agregar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="add-site-row">
     <input id="new-site-input" placeholder="Nombre del sitio (Binance, Bet365, PayPal…)" />
     <button class="btn-primary" onclick="addSite()">+ Agregar sitio</button>
@@ -505,7 +568,7 @@ const COINS = [
 const coinById = id => COINS.find(c => c.id === id);
 
 // ---- STATE ----
-const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
+const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, skins: [], skinsOpen: true, nextSkinId: 1, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
 let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
 
 // ---- LOAD STATE ----
@@ -521,6 +584,9 @@ function loadState() {
       state.nextHoldId = parsed.nextHoldId || 1;
       state.wallets = parsed.wallets || [];
       state.walletsOpen = parsed.walletsOpen !== false;
+      state.skins = parsed.skins || [];
+      state.skinsOpen = parsed.skinsOpen !== false;
+      state.nextSkinId = parsed.nextSkinId || 1;
       state.nextWalletId = parsed.nextWalletId || 1;
     }
   } catch(e) {
@@ -542,6 +608,9 @@ function saveState() {
         nextHoldId: state.nextHoldId,
         wallets: state.wallets,
         walletsOpen: state.walletsOpen,
+        skins: state.skins,
+        skinsOpen: state.skinsOpen,
+        nextSkinId: state.nextSkinId,
         nextWalletId: state.nextWalletId
       }));
       showToast();
@@ -863,6 +932,7 @@ async function refreshPrices(manual) {
   const ids = [...new Set(state.holdings.map(h => h.coin))];
   const statusEl = document.getElementById('price-status');
   refreshFx();
+  refreshTicker(!!manual);
   if (!ids.length) { statusEl.textContent = 'sin monedas'; renderCrypto(); return; }
   refreshing = true;
   try {
@@ -1092,6 +1162,217 @@ async function copyAddr(id) {
   showToast('✓ dirección copiada');
 }
 
+// =====================================================
+// ---- SKINS CS2 (precios de Skinport vía /api/skins) ----
+// =====================================================
+const SKIN_API = '/api/skins';
+let skinPrices = {}; // { 'AK-47 | Redline (Field-Tested)': {name,min,sug} }
+
+const skinPrice = p => p ? (p.min != null ? p.min : p.sug) : null;
+
+async function fetchSkinPrices(names) {
+  const res = await fetch(SKIN_API + '?names=' + encodeURIComponent(names.join('|')));
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const out = {};
+  Object.values(data.prices || {}).forEach(p => { out[p.name] = p; });
+  return out;
+}
+
+function applySkinsOpen() {
+  document.getElementById('skins-body').classList.toggle('open', state.skinsOpen);
+  document.getElementById('skins-chev').classList.toggle('open', state.skinsOpen);
+  document.getElementById('skins-head').classList.toggle('collapsed', !state.skinsOpen);
+}
+
+function toggleSkins() {
+  state.skinsOpen = !state.skinsOpen;
+  applySkinsOpen();
+  saveState();
+}
+
+let refreshingSkins = false;
+async function refreshSkins(manual) {
+  if (refreshingSkins) return;
+  const names = [...new Set(state.skins.map(h => h.name))];
+  const statusEl = document.getElementById('skin-status');
+  if (!names.length) { statusEl.textContent = 'sin skins'; renderSkins(); return; }
+  refreshingSkins = true;
+  try {
+    Object.assign(skinPrices, await fetchSkinPrices(names));
+    statusEl.textContent = 'Skinport · ' + new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer precios de skins:', e);
+    statusEl.textContent = 'error al actualizar skins';
+    if (manual) showToast('No se pudieron traer los precios de skins', true);
+  }
+  refreshingSkins = false;
+  renderSkins();
+}
+
+async function addSkin() {
+  const nameEl = document.getElementById('s-name');
+  const qtyEl = document.getElementById('s-qty');
+  const priceEl = document.getElementById('s-price');
+  const name = nameEl.value.trim();
+  const qty = parseInt(qtyEl.value, 10);
+  const paid = parseFloat(priceEl.value);
+  if (!name || isNaN(qty) || qty < 1) {
+    (!name ? nameEl : qtyEl).style.borderColor = '#f05b6a';
+    setTimeout(() => { nameEl.style.borderColor = ''; qtyEl.style.borderColor = ''; }, 1200);
+    return;
+  }
+  const btn = document.getElementById('s-btn');
+  btn.disabled = true;
+  try {
+    const got = await fetchSkinPrices([name]);
+    const p = Object.values(got)[0];
+    if (!p) { showToast('No encontré esa skin, elige una de las sugerencias', true); btn.disabled = false; return; }
+    Object.assign(skinPrices, got);
+    const each = (!isNaN(paid) && paid > 0) ? paid : skinPrice(p);
+    if (!each) { showToast('Esa skin no tiene precio, ponlo tú', true); btn.disabled = false; return; }
+    const cost = Math.round(each * qty * 100) / 100;
+    const h = state.skins.find(x => x.name === p.name);
+    if (h) { h.qty += qty; h.cost = Math.round((h.cost + cost) * 100) / 100; }
+    else state.skins.push({ id: state.nextSkinId++, name: p.name, qty, cost, date: new Date().toISOString().slice(0, 10) });
+    nameEl.value = ''; priceEl.value = ''; qtyEl.value = '1';
+    renderSkins();
+    saveState();
+    refreshSkins();
+  } catch(e) {
+    console.warn('Error al agregar skin:', e);
+    showToast('No se pudo traer el precio (¿falta /api/skins?)', true);
+  }
+  btn.disabled = false;
+}
+
+function deleteSkin(id) {
+  if (!confirm('¿Eliminar esta skin?')) return;
+  state.skins = state.skins.filter(h => h.id !== id);
+  renderSkins();
+  saveState();
+}
+
+function renderSkins() {
+  applySkinsOpen();
+  const wrap = document.getElementById('skins-wrap');
+  let invested = 0, value = 0;
+
+  if (!state.skins.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin skins. Busca una por nombre, pon la cantidad y lo que pagaste (si lo dejas vacío usa el precio actual).</div>';
+  } else {
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Skin</th><th>Cant.</th><th>Invertido</th><th>Precio c/u</th><th>Valor actual</th><th>Cambio</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${state.skins.map(h => {
+            const p = skinPrices[h.name];
+            const unit = skinPrice(p);
+            const cur = unit != null ? unit * h.qty : null;
+            invested += h.cost;
+            value += cur != null ? cur : h.cost;
+            let chg = '<span class="mono" style="color:var(--text-dim)">—</span>';
+            if (cur != null) {
+              const diff = cur - h.cost;
+              const pct = h.cost ? (diff / h.cost) * 100 : 0;
+              const cls = diff >= 0 ? 'chg-up' : 'chg-down';
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>`;
+            }
+            return `
+              <tr>
+                <td><div class="skin-name">${escHtml(h.name)}</div><div class="coin-sub">desde ${h.date}</div></td>
+                <td class="mono">x${h.qty}</td>
+                <td class="mono">${fmt(h.cost)}<div class="mxn">${fmt(h.cost / h.qty)} c/u</div></td>
+                <td class="mono">${unit != null ? fmt(unit) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) + (fx ? '<div class="mxn">' + mxOnly(cur) + '</div>' : '') : '—'}</td>
+                <td>${chg}</td>
+                <td><button class="del-btn" onclick="deleteSkin(${h.id})" title="Eliminar">✕</button></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const pnl = value - invested;
+  document.getElementById('s-invested').textContent = fmt(invested);
+  document.getElementById('s-value').textContent = fmt(value);
+  const pnlEl = document.getElementById('s-pnl');
+  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  document.getElementById('s-invested-mx').textContent = mxOnly(invested);
+  document.getElementById('s-value-mx').textContent = mxOnly(value);
+  document.getElementById('s-pnl-mx').textContent = mxOnly(pnl, true);
+}
+
+// Sugerencias de nombres mientras escribes
+let skinSearchTimer = null;
+document.getElementById('s-name').addEventListener('input', e => {
+  clearTimeout(skinSearchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3) return;
+  skinSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(SKIN_API + '?q=' + encodeURIComponent(q));
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('skin-list').innerHTML = (data.results || []).map(n => `<option value="${escHtml(n)}"></option>`).join('');
+    } catch(err) {}
+  }, 350);
+});
+
+// Skinport cachea 5 min: se actualiza cada 5 min y al volver a la pestaña
+setInterval(() => refreshSkins(), 300000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSkins(); });
+
+// =====================================================
+// ---- TICKER: precios en vivo de todas las monedas ----
+// =====================================================
+let ticker = {};      // { bitcoin: { usd, chg } }
+let tickerT = 0;
+let tickerPrev = {};  // precio anterior para el destello
+
+async function refreshTicker(force) {
+  if (!force && Date.now() - tickerT < 30000) return;
+  tickerT = Date.now();
+  const statusEl = document.getElementById('ticker-status');
+  try {
+    const url = PRICE_API + '?vs_currencies=usd&include_24hr_change=true&ids=' + COINS.map(c => c.id).join(',');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    tickerPrev = {};
+    Object.keys(ticker).forEach(id => { tickerPrev[id] = ticker[id].usd; });
+    COINS.forEach(c => {
+      const d = data[c.id];
+      if (d && typeof d.usd === 'number') ticker[c.id] = { usd: d.usd, chg: d.usd_24h_change };
+    });
+    statusEl.textContent = new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer el ticker:', e);
+    statusEl.textContent = 'sin conexión';
+    tickerT = Date.now() - 20000; // reintenta pronto
+  }
+  renderTicker();
+}
+
+function renderTicker() {
+  const list = document.getElementById('ticker-list');
+  list.innerHTML = COINS.map(c => {
+    const t = ticker[c.id];
+    if (!t) return `<div class="t-row"><div><div class="coin-sym">${c.sym}</div><div class="coin-sub">${c.name}</div></div><div class="t-right mono" style="color:var(--text-dim)">—</div></div>`;
+    const prev = tickerPrev[c.id];
+    const flash = prev != null && prev !== t.usd ? (t.usd > prev ? ' flash-up' : ' flash-down') : '';
+    const chg = typeof t.chg === 'number' ? t.chg : null;
+    const chgHtml = chg == null ? '' : `<div class="t-chg ${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%</div>`;
+    return `<div class="t-row">
+      <div><div class="coin-sym">${c.sym}</div><div class="coin-sub">${c.name}</div></div>
+      <div class="t-right"><div class="t-price${flash}">${fmtPrice(t.usd)}</div>${chgHtml}</div>
+    </div>`;
+  }).join('');
+}
+
 // Select de monedas
 document.getElementById('h-coin').innerHTML = COINS.map(c => `<option value="${c.id}">${c.sym} · ${c.name}</option>`).join('');
 document.getElementById('w-coin').innerHTML = COINS.map(c => `<option value="${c.sym}">${c.sym}</option>`).join('') + '<option value="OTRA">OTRA</option>';
@@ -1110,7 +1391,10 @@ updateFxLabel();
 render();
 renderCrypto();
 renderWallets();
+renderSkins();
+renderTicker();
 refreshPrices();
+refreshSkins();
 </script>
 </body>
 </html>
