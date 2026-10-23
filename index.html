@@ -55,6 +55,14 @@
   .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
   .logo span { color: var(--accent); }
   .date-label { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+  .currency-select {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 5px 8px; margin-bottom: 10px; cursor: pointer; outline: none;
+  }
+  .currency-select:hover, .currency-select:focus { border-color: var(--accent); }
+  .usd-ref { display: block; }
+  .site-balance .usd-ref { text-align: right; margin-top: 2px; }
 
   /* ---- SUMMARY CARDS ---- */
   .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 2rem; }
@@ -432,6 +440,7 @@
   <header>
     <div class="logo">Dashboard<span> </span>Alyax</div>
     <div class="header-right">
+      <select class="currency-select" id="currency-select" aria-label="Moneda" title="Moneda en la que se muestran los montos"></select>
       <div class="date-label" id="today-label"></div>
       <div class="date-label" id="fx-label" style="margin-top:4px"></div>
     </div>
@@ -547,6 +556,8 @@
 <script>
 // ---- STORAGE KEY ----
 const STORAGE_KEY = 'alyax_dashboard_v1';
+const RATES_KEY = 'alyax_rates';       // tasas USD -> otras monedas (caché)
+const CURRENCY_KEY = 'alyax_currency'; // moneda elegida para mostrar
 
 // ---- MONEDAS DISPONIBLES (id de CoinGecko) ----
 const COINS = [
@@ -723,7 +734,10 @@ function showToast(msg, isErr) {
 loadState();
 mergeHoldings();
 
-const fmt = n => '$' + Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Montos en la moneda elegida (los datos están en USD)
+const fmt = n => { const c = CURRENCIES[shownCur()]; return c.sym + Math.abs(toCur(n)).toLocaleString('es-MX', { minimumFractionDigits: c.dec, maximumFractionDigits: c.dec }); };
+// Precio unitario en la moneda elegida (más decimales si es menor a 1)
+const fmtUnit = n => { const c = CURRENCIES[shownCur()], v = toCur(n); return c.sym + v.toLocaleString('es-MX', { minimumFractionDigits: c.dec, maximumFractionDigits: v < 1 ? 6 : c.dec }); };
 const fmtCoin = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
 const fmtPrice = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
 
@@ -738,14 +752,14 @@ function updateSummary() {
   const net = ret - dep;
 
   document.getElementById('sum-dep').textContent = fmt(dep);
-  document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '') + mxTxt(dep);
+  document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '') + usdTxt(dep);
   document.getElementById('sum-ret').textContent = fmt(ret);
-  document.getElementById('sum-ret-count').textContent = rets.length + ' movimiento' + (rets.length !== 1 ? 's' : '') + mxTxt(ret);
+  document.getElementById('sum-ret-count').textContent = rets.length + ' movimiento' + (rets.length !== 1 ? 's' : '') + usdTxt(ret);
 
   const netEl = document.getElementById('sum-net');
   netEl.textContent = (net >= 0 ? '+' : '-') + fmt(net);
   netEl.className = 'card-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : 'neutral');
-  document.getElementById('sum-sites-count').textContent = state.sites.length + ' sitio' + (state.sites.length !== 1 ? 's' : '') + mxTxt(net, true);
+  document.getElementById('sum-sites-count').textContent = state.sites.length + ' sitio' + (state.sites.length !== 1 ? 's' : '') + usdTxt(net, true);
 }
 
 function addSite() {
@@ -863,7 +877,7 @@ function render() {
           ${escHtml(site.name)}
         </div>
         <div class="site-meta">
-          <span class="site-balance ${balClass}">${balStr}</span>
+          <span class="site-balance ${balClass}">${balStr}${usdHtml(bal, bal !== 0)}</span>
           <button class="del-site-btn" onclick="event.stopPropagation(); deleteSite(${site.id})" title="Eliminar sitio">✕</button>
           <span class="chevron ${isOpen ? 'open' : ''}" id="chev-${site.id}">▼</span>
         </div>
@@ -880,7 +894,7 @@ function render() {
                 <tr>
                   <td style="font-family:var(--mono);font-size:12px;color:var(--text-muted)">${t.date}</td>
                   <td><span class="badge badge-${t.type}">${t.type === 'dep' ? 'Depósito' : 'Retiro'}</span></td>
-                  <td class="amount-${t.type}">${t.type === 'dep' ? '+' : '-'}${fmt(t.amount)}</td>
+                  <td class="amount-${t.type}">${t.type === 'dep' ? '+' : '-'}${fmt(t.amount)}${usdHtml(t.amount)}</td>
                   <td class="tx-note">${escHtml(t.note) || '—'}</td>
                   <td><button class="del-btn" onclick="deleteTx(${site.id},${t.id})" title="Eliminar">✕</button></td>
                 </tr>
@@ -1007,15 +1021,15 @@ function renderCrypto() {
               const diff = cur - h.usd;
               const pct = h.usd ? (diff / h.usd) * 100 : 0;
               const cls = diff >= 0 ? 'chg-up' : 'chg-down';
-              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>`;
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>${usdHtml(diff, true)}`;
             }
             return `
               <tr>
                 <td><div class="coin-sym">${escHtml(c.sym)}</div><div class="coin-sub">${escHtml(c.name)} · ${h.date}</div></td>
                 <td class="mono">${fmtCoin(h.amount)} ${escHtml(c.sym)}</td>
-                <td class="mono">${fmt(h.usd)}</td>
-                <td class="mono">${p != null ? fmtPrice(p) : '—'}</td>
-                <td class="mono">${cur != null ? fmt(cur) + (fx ? '<div class="mxn">' + mxOnly(cur) + '</div>' : '') : '—'}</td>
+                <td class="mono">${fmt(h.usd)}${usdHtml(h.usd)}</td>
+                <td class="mono">${p != null ? fmtUnit(p) + usdHtml(p) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) + usdHtml(cur) : '—'}</td>
                 <td>${chg}</td>
                 <td><button class="del-btn" onclick="deleteHolding(${h.id})" title="Eliminar">✕</button></td>
               </tr>`;
@@ -1030,53 +1044,109 @@ function renderCrypto() {
   const pnlEl = document.getElementById('c-pnl');
   pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
   pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
-  document.getElementById('c-invested-mx').textContent = mxOnly(invested);
-  document.getElementById('c-value-mx').textContent = mxOnly(value);
-  document.getElementById('c-pnl-mx').textContent = mxOnly(pnl, true);
+  document.getElementById('c-invested-mx').textContent = usdRef(invested);
+  document.getElementById('c-value-mx').textContent = usdRef(value);
+  document.getElementById('c-pnl-mx').textContent = usdRef(pnl, true);
 }
 
 // =====================================================
-// ---- TIPO DE CAMBIO USD → MXN ----
+// ---- MONEDA DE VISUALIZACIÓN ----
+// Los datos se guardan siempre en USD; esto solo cambia cómo se muestran.
 // =====================================================
-let fx = null; // pesos MXN por 1 USD
+const CURRENCIES = {
+  USD: { sym: '$',    dec: 2 },
+  MXN: { sym: 'MX$',  dec: 2 },
+  ARS: { sym: 'AR$',  dec: 2 },
+  PEN: { sym: 'S/ ',  dec: 2 },
+  COP: { sym: 'COL$', dec: 0 },
+  CLP: { sym: 'CLP$', dec: 0 },
+  EUR: { sym: '€',    dec: 2 },
+  BRL: { sym: 'R$',   dec: 2 }
+};
+const RATES_TTL = 6 * 60 * 60 * 1000; // las tasas se piden como mucho cada 6 h
+let rates = null;        // { MXN: 18.73, ARS: 1527.85, ... } por 1 USD
+let ratesT = 0;          // cuándo se obtuvieron
+let ratesStale = false;  // true si la API falló y se usan las guardadas
+let currency = 'USD';
 try {
-  const saved = JSON.parse(localStorage.getItem('alyax_fx') || 'null');
-  if (saved && typeof saved.rate === 'number') fx = saved.rate;
+  const saved = JSON.parse(localStorage.getItem(RATES_KEY) || 'null');
+  if (saved && saved.rates) { rates = saved.rates; ratesT = saved.t || 0; }
+  const c = localStorage.getItem(CURRENCY_KEY);
+  if (CURRENCIES[c]) currency = c;
 } catch(e) {}
 
-function mxOnly(n, signed) {
-  if (!fx) return '';
-  const v = Math.abs(n) * fx;
-  return (signed ? (n >= 0 ? '+' : '-') : '') + 'MX$' + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Moneda que realmente se muestra: si todavía no hay tasa para la elegida, USD
+const shownCur = () => currency !== 'USD' && rates && rates[currency] ? currency : 'USD';
+const toCur = n => shownCur() === 'USD' ? n : n * rates[currency];
+
+// Valor en USD chiquito debajo de cada monto (no se muestra si la moneda es USD)
+function usdRef(n, signed) {
+  if (shownCur() === 'USD') return '';
+  const a = Math.abs(n);
+  return (signed ? (n >= 0 ? '+' : '-') : '') + 'US$' + a.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: a && a < 1 ? 6 : 2 });
 }
-const mxTxt = (n, signed) => fx ? ' · ' + mxOnly(n, signed) : '';
+const usdTxt = (n, signed) => shownCur() === 'USD' ? '' : ' · ' + usdRef(n, signed);
+const usdHtml = (n, signed) => shownCur() === 'USD' ? '' : '<span class="mxn usd-ref">' + usdRef(n, signed) + '</span>';
 
 function updateFxLabel() {
-  document.getElementById('fx-label').textContent = fx ? '1 USD = MX$' + fx.toFixed(2) : '';
+  const el = document.getElementById('fx-label');
+  const c = shownCur();
+  if (currency === 'USD') el.textContent = '';
+  else if (c === 'USD') el.textContent = 'sin tasa para ' + currency + ' · mostrando USD';
+  else el.textContent = '1 USD = ' + CURRENCIES[c].sym + rates[c].toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (ratesStale ? ' · tasas guardadas' : '');
 }
 
-async function getFxRate() {
+async function fetchRates() {
+  const pick = src => {
+    const out = {};
+    Object.keys(CURRENCIES).forEach(c => { if (c !== 'USD' && typeof src[c] === 'number') out[c] = src[c]; });
+    return out;
+  };
   try {
     const res = await fetch('https://open.er-api.com/v6/latest/USD');
     const data = await res.json();
-    if (data && data.rates && typeof data.rates.MXN === 'number') return data.rates.MXN;
-  } catch(e) { console.warn('FX principal falló:', e); }
-  const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=MXN');
+    const r = pick((data && data.rates) || {});
+    if (Object.keys(r).length) return r;
+  } catch(e) { console.warn('Tasas principal falló:', e); }
+  // Respaldo, también gratis y sin key
+  const res = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json');
   const data = await res.json();
-  if (data && data.rates && typeof data.rates.MXN === 'number') return data.rates.MXN;
-  throw new Error('sin tipo de cambio');
+  const up = {};
+  Object.keys((data && data.usd) || {}).forEach(k => { up[k.toUpperCase()] = data.usd[k]; });
+  const r = pick(up);
+  if (Object.keys(r).length) return r;
+  throw new Error('sin tasas');
 }
 
-async function refreshFx() {
+let fetchingRates = false;
+async function refreshFx(force) {
+  if (fetchingRates) return;
+  if (!force && rates && Date.now() - ratesT < RATES_TTL) return; // caché vigente
+  fetchingRates = true;
   try {
-    fx = await getFxRate();
-    try { localStorage.setItem('alyax_fx', JSON.stringify({ rate: fx, t: Date.now() })); } catch(e) {}
+    rates = await fetchRates();
+    ratesT = Date.now();
+    ratesStale = false;
+    try { localStorage.setItem(RATES_KEY, JSON.stringify({ rates, t: ratesT })); } catch(e) {}
   } catch(e) {
-    console.warn('No se pudo actualizar el tipo de cambio:', e);
+    console.warn('No se pudieron actualizar las tasas, uso las guardadas:', e);
+    ratesStale = !!rates;
+    ratesT = Date.now() - RATES_TTL + 10 * 60 * 1000; // reintenta en 10 min
   }
+  fetchingRates = false;
   updateFxLabel();
-  updateSummary();
+  if (currency !== 'USD') { render(); renderCrypto(); renderSkins(); }
+}
+
+function setCurrency(c) {
+  if (!CURRENCIES[c]) return;
+  currency = c;
+  try { localStorage.setItem(CURRENCY_KEY, c); } catch(e) {}
+  updateFxLabel();
+  render();
   renderCrypto();
+  renderSkins();
+  if (c !== 'USD' && !(rates && rates[c])) refreshFx(true);
 }
 
 // =====================================================
@@ -1278,15 +1348,15 @@ function renderSkins() {
               const diff = cur - h.cost;
               const pct = h.cost ? (diff / h.cost) * 100 : 0;
               const cls = diff >= 0 ? 'chg-up' : 'chg-down';
-              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>`;
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>${usdHtml(diff, true)}`;
             }
             return `
               <tr>
                 <td><div class="skin-name">${escHtml(h.name)}</div><div class="coin-sub">desde ${h.date}</div></td>
                 <td class="mono">x${h.qty}</td>
-                <td class="mono">${fmt(h.cost)}<div class="mxn">${fmt(h.cost / h.qty)} c/u</div></td>
-                <td class="mono">${unit != null ? fmt(unit) : '—'}</td>
-                <td class="mono">${cur != null ? fmt(cur) + (fx ? '<div class="mxn">' + mxOnly(cur) + '</div>' : '') : '—'}</td>
+                <td class="mono">${fmt(h.cost)}${usdHtml(h.cost)}<div class="mxn">${fmt(h.cost / h.qty)} c/u</div></td>
+                <td class="mono">${unit != null ? fmt(unit) + usdHtml(unit) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) + usdHtml(cur) : '—'}</td>
                 <td>${chg}</td>
                 <td><button class="del-btn" onclick="deleteSkin(${h.id})" title="Eliminar">✕</button></td>
               </tr>`;
@@ -1301,9 +1371,9 @@ function renderSkins() {
   const pnlEl = document.getElementById('s-pnl');
   pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
   pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
-  document.getElementById('s-invested-mx').textContent = mxOnly(invested);
-  document.getElementById('s-value-mx').textContent = mxOnly(value);
-  document.getElementById('s-pnl-mx').textContent = mxOnly(pnl, true);
+  document.getElementById('s-invested-mx').textContent = usdRef(invested);
+  document.getElementById('s-value-mx').textContent = usdRef(value);
+  document.getElementById('s-pnl-mx').textContent = usdRef(pnl, true);
 }
 
 // Sugerencias de nombres mientras escribes
@@ -1374,6 +1444,12 @@ function renderTicker() {
 }
 
 // Select de monedas
+// Selector de moneda (se recuerda al recargar)
+const curSel = document.getElementById('currency-select');
+curSel.innerHTML = Object.keys(CURRENCIES).map(c => `<option value="${c}">${c}</option>`).join('');
+curSel.value = currency;
+curSel.addEventListener('change', e => setCurrency(e.target.value));
+
 document.getElementById('h-coin').innerHTML = COINS.map(c => `<option value="${c.id}">${c.sym} · ${c.name}</option>`).join('');
 document.getElementById('w-coin').innerHTML = COINS.map(c => `<option value="${c.sym}">${c.sym}</option>`).join('') + '<option value="OTRA">OTRA</option>';
 document.getElementById('w-addr').addEventListener('keydown', e => { if (e.key === 'Enter') addWallet(); });
