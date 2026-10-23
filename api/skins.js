@@ -1,6 +1,7 @@
 // Vercel serverless function: precios de skins CS2 desde Skinport (USD).
 // Uso:  /api/skins?q=ak redline          -> sugerencias de nombres
-//       /api/skins?names=Nombre1|Nombre2 -> precios de esas skins
+//       /api/skins?names=Nombre1%0ANombre2 -> precios de esas skins (separadas por salto de línea,
+//                                          porque los nombres ya llevan '|')
 // Skinport cachea 5 min y limita a 8 requests / 5 min, así que se guarda en memoria.
 
 const TTL = 5 * 60 * 1000;
@@ -49,7 +50,7 @@ module.exports = async (req, res) => {
 
   if (names) {
     const prices = {};
-    String(names).split('|').forEach(n => {
+    String(names).split('\n').forEach(n => {
       const it = items[n.trim().toLowerCase()];
       if (it) prices[n] = it;
     });

@@ -1171,7 +1171,7 @@ let skinPrices = {}; // { 'AK-47 | Redline (Field-Tested)': {name,min,sug} }
 const skinPrice = p => p ? (p.min != null ? p.min : p.sug) : null;
 
 async function fetchSkinPrices(names) {
-  const res = await fetch(SKIN_API + '?names=' + encodeURIComponent(names.join('|')));
+  const res = await fetch(SKIN_API + '?names=' + encodeURIComponent(names.join('\n')));
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const data = await res.json();
   const out = {};
