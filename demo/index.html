@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tracker de Finanzas · Demo</title>
+<meta name="description" content="Demo de un tracker de finanzas multi-plataforma: movimientos por plataforma, cripto en vivo, wallets y skins CS2." />
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235b8af5'/><path d='M8 22l5-6 4 3 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #161921;
+    --surface2: #1e222d;
+    --border: rgba(255,255,255,0.07);
+    --border-hover: rgba(255,255,255,0.14);
+    --text: #e8eaf0;
+    --text-muted: #7a7f94;
+    --text-dim: #4a4f62;
+    --green: #2eca8c;
+    --green-dim: rgba(46,202,140,0.12);
+    --red: #f05b6a;
+    --red-dim: rgba(240,91,106,0.12);
+    --accent: #5b8af5;
+    --accent-dim: rgba(91,138,245,0.12);
+    --font: 'Sora', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+
+  .page { max-width: 860px; margin: 0 auto; }
+
+  /* ---- HEADER ---- */
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .date-label { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+  .currency-select {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 5px 8px; margin-bottom: 10px; cursor: pointer; outline: none;
+  }
+  .currency-select:hover, .currency-select:focus { border-color: var(--accent); }
+  .usd-ref { display: block; }
+  .site-balance .usd-ref { text-align: right; margin-top: 2px; }
+  .header-right { text-align: right; }
+  .tagline { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .demo-badge {
+    font-family: var(--mono); font-size: 10px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--accent); background: var(--accent-dim);
+    border-radius: 999px; padding: 3px 8px; margin-left: 8px; vertical-align: middle;
+  }
+  .btn-reset { margin-bottom: 10px; }
+
+  /* ---- TABS ---- */
+  .tabs {
+    display: flex; gap: 4px; width: fit-content;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 4px; margin-bottom: 2rem;
+  }
+  .tab {
+    background: none; border: none; cursor: pointer;
+    font-family: var(--font); font-size: 13px; color: var(--text-muted);
+    padding: 7px 18px; border-radius: var(--radius-sm);
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--accent-dim); color: var(--accent); }
+
+  /* ---- SUMMARY CARDS ---- */
+  .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 2rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.25rem 1rem;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border-hover); }
+  .card-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .card-value {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 500;
+    letter-spacing: -1px;
+  }
+  .card-value.green { color: var(--green); }
+  .card-value.red { color: var(--red); }
+  .card-value.neutral { color: var(--text); }
+  .card-sub { font-size: 11px; color: var(--text-dim); margin-top: 6px; font-family: var(--mono); }
+
+  /* ---- CRYPTO ---- */
+  .crypto-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 2rem;
+    overflow: hidden;
+  }
+  .crypto-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .crypto-title { font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .crypto-title .site-dot { background: var(--green); }
+  .crypto-status { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .btn-refresh {
+    background: none;
+    border: 1px solid var(--border-hover);
+    color: var(--text-muted);
+    border-radius: 99px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .btn-refresh:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .crypto-totals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-bottom: 1px solid var(--border);
+  }
+  .crypto-totals > div { padding: 0.85rem 1.25rem; border-right: 1px solid var(--border); }
+  .crypto-totals > div:last-child { border-right: none; }
+  .ct-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
+  .ct-value { font-family: var(--mono); font-size: 18px; font-weight: 500; letter-spacing: -0.5px; }
+  .ct-value.up { color: var(--green); }
+  .ct-value.down { color: var(--red); }
+  .coin-sym { font-weight: 500; font-size: 13px; }
+  .coin-sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  .chg-up { font-family: var(--mono); font-size: 13px; color: var(--green); }
+  .chg-down { font-family: var(--mono); font-size: 13px; color: var(--red); }
+  .chg-sub { font-family: var(--mono); font-size: 11px; opacity: 0.8; margin-top: 2px; }
+  .inp-coin { width: 150px; }
+  .inp-usd { width: 130px; }
+
+  .mxn { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .header-right { text-align: right; }
+
+  .crypto-head.collapsed { border-bottom: none; }
+  .crypto-head.clickable { cursor: pointer; user-select: none; }
+  .crypto-head.clickable:hover { background: rgba(255,255,255,0.02); }
+  .inp-sname { flex: 1; min-width: 220px; }
+  .inp-sqty { width: 80px; }
+  .skin-name { font-weight: 500; font-size: 13px; line-height: 1.35; }
+  .inp-wname { width: 150px; }
+  .inp-waddr { flex: 1; min-width: 180px; }
+  .addr { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+
+  /* ---- TICKER (precios en vivo) ---- */
+  .ticker { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; max-width: 860px; margin: 0 auto 1.5rem; }
+  .ticker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); }
+  .ticker-title { font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .ticker-sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 1.6s infinite; flex-shrink: 0; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(46,202,140,0.5); } 70% { box-shadow: 0 0 0 7px rgba(46,202,140,0); } 100% { box-shadow: 0 0 0 0 rgba(46,202,140,0); } }
+  .ticker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .t-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+  .t-right { text-align: right; }
+  .t-price { font-family: var(--mono); font-size: 13px; }
+  .t-chg { font-family: var(--mono); font-size: 11px; margin-top: 2px; }
+  .t-chg.up { color: var(--green); }
+  .t-chg.down { color: var(--red); }
+  .t-price.flash-up { animation: flashUp 1.4s ease-out; }
+  .t-price.flash-down { animation: flashDown 1.4s ease-out; }
+  @keyframes flashUp { from { color: var(--green); text-shadow: 0 0 8px rgba(46,202,140,0.6); } to { color: var(--text); text-shadow: none; } }
+  @keyframes flashDown { from { color: var(--red); text-shadow: 0 0 8px rgba(240,91,106,0.6); } to { color: var(--text); text-shadow: none; } }
+  @media (min-width: 1500px) {
+    .ticker { position: fixed; top: 2rem; left: calc(50% - 734px); width: 280px; margin: 0; max-height: calc(100vh - 4rem); overflow-y: auto; }
+    .ticker-list { display: block; }
+    .t-row:last-child { border-bottom: none; }
+  }
+
+  /* ---- ADD SITE ---- */
+  .add-site-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+  .add-site-row input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .add-site-row input:focus { border-color: var(--accent); }
+  .add-site-row input::placeholder { color: var(--text-dim); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 18px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:active { transform: scale(0.97); }
+
+  /* ---- SITE BLOCK ---- */
+  .site-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .site-header:hover { background: rgba(255,255,255,0.02); }
+  .site-title { font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .site-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .site-meta { display: flex; align-items: center; gap: 14px; }
+  .site-balance { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+  .site-balance.pos { color: var(--green); }
+  .site-balance.neg { color: var(--red); }
+  .site-balance.zero { color: var(--text-muted); }
+  .chevron { color: var(--text-dim); font-size: 12px; transition: transform 0.2s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  /* ---- TRANSACTIONS TABLE ---- */
+  .site-body { display: none; }
+  .site-body.open { display: block; }
+
+  .tx-table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-dim);
+    font-weight: 400;
+    padding: 8px 1rem;
+  }
+  td {
+    padding: 10px 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 99px;
+  }
+  /* Depósito = rojo, Retiro = verde */
+  .badge-dep { background: var(--red-dim); color: var(--red); }
+  .badge-ret { background: var(--green-dim); color: var(--green); }
+
+  .amount-dep { font-family: var(--mono); color: var(--red); font-size: 13px; }
+  .amount-ret { font-family: var(--mono); color: var(--green); font-size: 13px; }
+  .tx-note { color: var(--text-muted); font-size: 12px; }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+  }
+  .del-btn:hover { background: var(--red-dim); color: var(--red); }
+
+  .empty-msg {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    padding: 1.5rem;
+    font-style: italic;
+  }
+
+  /* ---- ADD TX FORM ---- */
+  .add-tx-form {
+    display: flex;
+    gap: 8px;
+    padding: 0.85rem 1rem;
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .add-tx-form input,
+  .add-tx-form select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .add-tx-form input:focus,
+  .add-tx-form select:focus { border-color: var(--accent); }
+  .add-tx-form input::placeholder { color: var(--text-dim); }
+  .add-tx-form select option { background: #1e222d; }
+  .inp-date { width: 130px; }
+  .inp-type { width: 120px; }
+  .inp-amount { width: 110px; }
+  .inp-note { flex: 1; min-width: 120px; }
+  .btn-add-tx {
+    background: transparent;
+    border: 1px solid var(--border-hover);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 7px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-add-tx:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .btn-add-tx:disabled { opacity: 0.5; cursor: wait; }
+
+  .del-site-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .del-site-btn:hover { background: var(--red-dim); color: var(--red); }
+
+  /* ---- SAVE INDICATOR ---- */
+  .save-toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: var(--surface2);
+    border: 1px solid var(--border-hover);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 7px 14px;
+    border-radius: 99px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.25s, transform 0.25s;
+    pointer-events: none;
+    z-index: 99;
+  }
+  .save-toast.err { color: var(--red); }
+  .save-toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ---- EMPTY STATE ---- */
+  .no-sites {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-dim);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .no-sites p { font-size: 15px; margin-bottom: 6px; color: var(--text-muted); }
+  .no-sites small { font-size: 12px; }
+
+  /* ---- FOOTER ---- */
+  footer {
+    margin-top: 3rem;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+
+  @media (max-width: 600px) {
+    .header-right { text-align: left; }
+    .summary { grid-template-columns: 1fr 1fr; }
+    .summary .card:last-child { grid-column: span 2; }
+    header { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .card-value { font-size: 20px; }
+    .crypto-totals > div { padding: 0.75rem; }
+    .ct-value { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<aside class="ticker" id="ticker">
+  <div class="ticker-head">
+    <div class="ticker-title"><span class="live-dot"></span>Precios en vivo</div>
+    <div class="ticker-sub" id="ticker-status">cargando…</div>
+  </div>
+  <div class="ticker-list" id="ticker-list"></div>
+</aside>
+
+<div class="page">
+
+  <header>
+    <div>
+      <div class="logo">Tracker<span> </span>Finanzas<span class="demo-badge">demo</span></div>
+      <div class="tagline">Tracker de finanzas multi-plataforma · datos de ejemplo</div>
+    </div>
+    <div class="header-right">
+      <button class="btn-refresh btn-reset" onclick="resetDemo()" title="Borra tus cambios y vuelve a cargar los datos de ejemplo">↺ Reiniciar demo</button>
+      <select class="currency-select" id="currency-select" aria-label="Moneda" title="Moneda en la que se muestran los montos"></select>
+      <div class="date-label" id="today-label"></div>
+      <div class="date-label" id="fx-label" style="margin-top:4px"></div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" id="tabbtn-finanzas" role="tab" onclick="showTab('finanzas')">Finanzas</button>
+    <button class="tab" id="tabbtn-skins" role="tab" onclick="showTab('skins')">Skins CS2</button>
+  </nav>
+
+  <!-- ===== PESTAÑA FINANZAS ===== -->
+  <div class="tab-panel" id="tab-finanzas" role="tabpanel">
+
+  <div class="summary">
+    <div class="card">
+      <div class="card-label">Total depositado</div>
+      <div class="card-value red" id="sum-dep">$0.00</div>
+      <div class="card-sub" id="sum-dep-count">0 movimientos</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total retirado</div>
+      <div class="card-value green" id="sum-ret">$0.00</div>
+      <div class="card-sub" id="sum-ret-count">0 movimientos</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Balance neto</div>
+      <div class="card-value neutral" id="sum-net">$0.00</div>
+      <div class="card-sub" id="sum-sites-count">0 plataformas</div>
+    </div>
+  </div>
+
+  <!-- ---- CRIPTO ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Cripto</div>
+      <div class="crypto-status">
+        <span id="price-status">cargando precios…</span>
+        <button class="btn-refresh" onclick="refreshPrices(true)" title="Actualizar precios">↻ actualizar</button>
+      </div>
+    </div>
+
+    <div class="crypto-totals">
+      <div><div class="ct-label">Invertido</div><div class="ct-value" id="c-invested">$0.00</div><div class="mxn" id="c-invested-mx"></div></div>
+      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="c-value">$0.00</div><div class="mxn" id="c-value-mx"></div></div>
+      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="c-pnl">$0.00</div><div class="mxn" id="c-pnl-mx"></div></div>
+    </div>
+
+    <div class="tx-table-wrap" id="holdings-wrap"></div>
+
+    <div class="add-tx-form">
+      <select class="inp-coin" id="h-coin"></select>
+      <input class="inp-usd" type="number" id="h-usd" placeholder="Monto en USD" min="0" step="0.01" />
+      <button class="btn-add-tx" id="h-btn" onclick="addHolding()">+ Agregar</button>
+    </div>
+  </div>
+
+  <!-- ---- WALLETS ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head clickable" id="wallets-head" onclick="toggleWallets()">
+      <div class="crypto-title"><span class="site-dot"></span>Wallets</div>
+      <div class="crypto-status">
+        <span id="wallets-count"></span>
+        <span class="chevron open" id="wallets-chev">▼</span>
+      </div>
+    </div>
+    <div class="site-body open" id="wallets-body">
+    <div class="tx-table-wrap" id="wallets-wrap"></div>
+    <div class="add-tx-form">
+      <input class="inp-wname" type="text" id="w-name" placeholder="Nombre (ej. Metamask)" />
+      <select class="inp-coin" id="w-coin"></select>
+      <input class="inp-waddr" type="text" id="w-addr" placeholder="Dirección pública" />
+      <button class="btn-add-tx" onclick="addWallet()">+ Agregar</button>
+    </div>
+    </div>
+  </div>
+
+  <div class="add-site-row">
+    <input id="new-site-input" placeholder="Nombre de la plataforma (Binance, PayPal, Wise…)" />
+    <button class="btn-primary" onclick="addSite()">+ Agregar plataforma</button>
+  </div>
+
+  <div id="sites-container"></div>
+  <div id="no-sites-msg" class="no-sites">
+    <p>Sin plataformas todavía</p>
+    <small>Escribe el nombre de una plataforma arriba y agrégala para empezar.</small>
+  </div>
+
+  </div>
+  <!-- ===== /PESTAÑA FINANZAS ===== -->
+
+  <!-- ===== PESTAÑA SKINS ===== -->
+  <div class="tab-panel" id="tab-skins" role="tabpanel" hidden>
+
+  <!-- ---- SKINS CS2 ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head clickable" id="skins-head" onclick="toggleSkins()">
+      <div class="crypto-title"><span class="site-dot"></span>Skins CS2</div>
+      <div class="crypto-status">
+        <span id="skin-status">sin skins</span>
+        <button class="btn-refresh" onclick="event.stopPropagation(); refreshSkins(true)" title="Actualizar precios">↻ actualizar</button>
+        <span class="chevron open" id="skins-chev">▼</span>
+      </div>
+    </div>
+    <div class="site-body open" id="skins-body">
+      <div class="crypto-totals">
+        <div><div class="ct-label">Invertido</div><div class="ct-value" id="s-invested">$0.00</div><div class="mxn" id="s-invested-mx"></div></div>
+        <div><div class="ct-label">Valor actual</div><div class="ct-value" id="s-value">$0.00</div><div class="mxn" id="s-value-mx"></div></div>
+        <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="s-pnl">$0.00</div><div class="mxn" id="s-pnl-mx"></div></div>
+      </div>
+      <div class="tx-table-wrap" id="skins-wrap"></div>
+      <div class="add-tx-form">
+        <input class="inp-sname" type="text" id="s-name" list="skin-list" placeholder="Skin (ej. AK-47 | Redline (Field-Tested))" autocomplete="off" />
+        <datalist id="skin-list"></datalist>
+        <input class="inp-sqty" type="number" id="s-qty" placeholder="Cant." min="1" step="1" value="1" />
+        <input class="inp-usd" type="number" id="s-price" placeholder="Precio c/u USD" min="0" step="0.01" />
+        <button class="btn-add-tx" id="s-btn" onclick="addSkin()">+ Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  </div>
+  <!-- ===== /PESTAÑA SKINS ===== -->
+
+  <footer>demo con datos de ejemplo · tus cambios se guardan solo en este navegador 💾</footer>
+</div>
+
+<!-- Toast de guardado -->
+<div class="save-toast" id="save-toast">✓ guardado</div>
+
+<script>
+// ---- STORAGE KEY ----
+// Distinta a la del dashboard real para que nunca se mezclen los datos
+const STORAGE_KEY = 'finanzas_demo_v1';
+const RATES_KEY = 'finanzas_demo_rates';
+const CURRENCY_KEY = 'finanzas_demo_currency';
+
+// ---- MONEDAS DISPONIBLES (id de CoinGecko) ----
+const COINS = [
+  { id: 'bitcoin',      sym: 'BTC',  name: 'Bitcoin' },
+  { id: 'ethereum',     sym: 'ETH',  name: 'Ethereum' },
+  { id: 'litecoin',     sym: 'LTC',  name: 'Litecoin' },
+  { id: 'solana',       sym: 'SOL',  name: 'Solana' },
+  { id: 'tether',       sym: 'USDT', name: 'Tether' },
+  { id: 'usd-coin',     sym: 'USDC', name: 'USD Coin' },
+  { id: 'ripple',       sym: 'XRP',  name: 'XRP' },
+  { id: 'dogecoin',     sym: 'DOGE', name: 'Dogecoin' },
+  { id: 'binancecoin',  sym: 'BNB',  name: 'BNB' },
+  { id: 'tron',         sym: 'TRX',  name: 'TRON' },
+  { id: 'cardano',      sym: 'ADA',  name: 'Cardano' },
+  { id: 'the-open-network', sym: 'TON', name: 'Toncoin' },
+  { id: 'bitcoin-cash', sym: 'BCH',  name: 'Bitcoin Cash' },
+  { id: 'monero',       sym: 'XMR',  name: 'Monero' }
+];
+const coinById = id => COINS.find(c => c.id === id);
+
+// ---- STATE ----
+const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, skins: [], skinsOpen: true, nextSkinId: 1, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
+let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
+
+// ---- DATOS DE EJEMPLO (demo) ----
+// Fechas relativas a hoy para que la demo siempre se vea reciente.
+// Las direcciones de wallets son inventadas.
+const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+
+function seedDemo() {
+  let txId = 1;
+  const site = (id, name, open, txs) => ({
+    id, name, open,
+    txs: txs.map(([d, type, amount, note]) => ({ id: txId++, date: daysAgo(d), type, amount, note }))
+            .sort((a, b) => b.date.localeCompare(a.date))
+  });
+  state.sites = [
+    site(1, 'Binance', true, [
+      [118, 'dep', 1500,   'Fondeo inicial desde banco'],
+      [84,  'dep', 750,    'Aporte mensual'],
+      [53,  'dep', 750,    'Aporte mensual'],
+      [21,  'ret', 1320.4, 'Toma de ganancias a cuenta'],
+    ]),
+    site(2, 'PayPal', true, [
+      [96,  'ret', 860,    'Cobro proyecto freelance'],
+      [61,  'dep', 120,    'Suscripciones y compras'],
+      [33,  'ret', 1240.5, 'Cobro cliente diseño web'],
+      [9,   'dep', 64.99,  'Pago de software'],
+    ]),
+    site(3, 'Wise', false, [
+      [102, 'dep', 2000,   'Envío desde banco MX'],
+      [70,  'ret', 1955.3, 'Conversión MXN → USD'],
+      [14,  'dep', 500,    'Fondo de viaje'],
+    ]),
+    site(4, 'Mercado Pago', false, [
+      [88,  'dep', 300,    'Recarga'],
+      [45,  'ret', 180.75, 'Reembolsos y cashback'],
+      [6,   'dep', 150,    'Recarga'],
+    ]),
+    site(5, 'Kraken', false, [
+      [77,  'dep', 1000,   'DCA trimestral'],
+      [12,  'ret', 420,    'Rebalanceo de cartera'],
+    ]),
+  ];
+  state.holdings = [
+    { id: 1, coin: 'bitcoin',  usd: 2450,  amount: 0.0385, date: daysAgo(118) },
+    { id: 2, coin: 'ethereum', usd: 2760,  amount: 0.92,   date: daysAgo(84) },
+    { id: 3, coin: 'solana',   usd: 2030,  amount: 14.5,   date: daysAgo(53) },
+    { id: 4, coin: 'litecoin', usd: 540,   amount: 6.2,    date: daysAgo(40) },
+    { id: 5, coin: 'usd-coin', usd: 600,   amount: 600,    date: daysAgo(12) },
+  ].map(h => ({ ...h, entryPrice: h.usd / h.amount }));
+  state.wallets = [
+    { id: 1, name: 'Ledger',   coin: 'BTC', address: 'bc1q55th7faa32m8ff4tklyhktnzqc99kq9un3rsqw' },
+    { id: 2, name: 'MetaMask', coin: 'ETH', address: '0xcbe2fb57d667f073f749bce4364ceb90bf1bf282' },
+    { id: 3, name: 'Phantom',  coin: 'SOL', address: 'QTkpQ7Vc3U827KSxEhBMaL9CaLTQA8TH6pqehYaq8pHE' },
+    { id: 4, name: 'Exodus',   coin: 'LTC', address: 'ltc1q6mejunjrrf7q5489de7azj2zyf8gmehmss9azm' },
+  ];
+  state.skins = [
+    { id: 1, name: 'AK-47 | Redline (Field-Tested)',           qty: 2, cost: 48.6,  date: daysAgo(110) },
+    { id: 2, name: 'AWP | Asiimov (Field-Tested)',             qty: 1, cost: 92,    date: daysAgo(95) },
+    { id: 3, name: 'M4A1-S | Hyper Beast (Minimal Wear)',      qty: 1, cost: 118.4, date: daysAgo(60) },
+    { id: 4, name: 'Glock-18 | Water Elemental (Minimal Wear)', qty: 3, cost: 51.75, date: daysAgo(38) },
+    { id: 5, name: 'USP-S | Kill Confirmed (Field-Tested)',    qty: 1, cost: 58.9,  date: daysAgo(17) },
+  ];
+  state.walletsOpen = true;
+  state.skinsOpen = true;
+  state.nextSiteId = state.sites.length + 1;
+  state.nextTxId = txId;
+  state.nextHoldId = state.holdings.length + 1;
+  state.nextWalletId = state.wallets.length + 1;
+  state.nextSkinId = state.skins.length + 1;
+}
+
+function resetDemo() {
+  if (!confirm('¿Reiniciar la demo? Se borran tus cambios y vuelven los datos de ejemplo.')) return;
+  clearTimeout(saveTimer);
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+  seedDemo();
+  render();
+  renderCrypto();
+  renderWallets();
+  renderSkins();
+  refreshPrices(true);
+  refreshSkins();
+  showToast('↺ demo reiniciada');
+}
+
+// ---- PESTAÑAS ----
+const TABS = ['finanzas', 'skins'];
+function showTab(name) {
+  if (!TABS.includes(name)) name = 'finanzas';
+  TABS.forEach(t => {
+    document.getElementById('tab-' + t).hidden = t !== name;
+    const btn = document.getElementById('tabbtn-' + t);
+    btn.classList.toggle('active', t === name);
+    btn.setAttribute('aria-selected', t === name);
+  });
+  history.replaceState(null, '', name === 'finanzas' ? location.pathname + location.search : '#' + name);
+}
+
+// ---- LOAD STATE ----
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { seedDemo(); return; } // primera visita: datos de ejemplo
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      state.sites = parsed.sites || [];
+      state.holdings = parsed.holdings || [];
+      state.nextSiteId = parsed.nextSiteId || 1;
+      state.nextTxId = parsed.nextTxId || 1;
+      state.nextHoldId = parsed.nextHoldId || 1;
+      state.wallets = parsed.wallets || [];
+      state.walletsOpen = parsed.walletsOpen !== false;
+      state.skins = parsed.skins || [];
+      state.skinsOpen = parsed.skinsOpen !== false;
+      state.nextSkinId = parsed.nextSkinId || 1;
+      state.nextWalletId = parsed.nextWalletId || 1;
+    }
+  } catch(e) {
+    console.warn('No se pudo cargar el estado guardado:', e);
+    if (!state.sites.length) seedDemo();
+  }
+}
+
+// ---- SAVE STATE ----
+let saveTimer = null;
+function saveState() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        sites: state.sites,
+        holdings: state.holdings,
+        nextSiteId: state.nextSiteId,
+        nextTxId: state.nextTxId,
+        nextHoldId: state.nextHoldId,
+        wallets: state.wallets,
+        walletsOpen: state.walletsOpen,
+        skins: state.skins,
+        skinsOpen: state.skinsOpen,
+        nextSkinId: state.nextSkinId,
+        nextWalletId: state.nextWalletId
+      }));
+      showToast();
+    } catch(e) {
+      console.warn('No se pudo guardar el estado:', e);
+    }
+  }, 300);
+}
+
+// ---- Posiciones: una sola fila por moneda ----
+function mergeInto(coinId, usd, price) {
+  const add = usd / price;
+  const h = state.holdings.find(x => x.coin === coinId);
+  if (h) {
+    h.amount += add;
+    h.usd = Math.round((h.usd + usd) * 100) / 100;
+    h.entryPrice = h.usd / h.amount; // precio promedio de compra
+  } else {
+    state.holdings.push({
+      id: state.nextHoldId++,
+      coin: coinId,
+      usd: Math.round(usd * 100) / 100,
+      amount: add,
+      entryPrice: price,
+      date: new Date().toISOString().slice(0, 10)
+    });
+  }
+}
+
+function subtractFrom(coinId, usdValue, price) {
+  const h = state.holdings.find(x => x.coin === coinId);
+  if (!h) return null;
+  let coinAmt = usdValue / price;
+  if (coinAmt > h.amount * 1.001) return null;   // no alcanza
+  if (coinAmt > h.amount) coinAmt = h.amount;
+  const costReduce = h.usd * (coinAmt / h.amount); // costo proporcional
+  h.amount -= coinAmt;
+  h.usd = Math.round((h.usd - costReduce) * 100) / 100;
+  if (h.amount <= 1e-9) state.holdings = state.holdings.filter(x => x !== h);
+  else h.entryPrice = h.usd / h.amount;
+  return { usd: costReduce, amount: coinAmt };
+}
+
+function undoCrypto(c) {
+  const h = state.holdings.find(x => x.coin === c.coin);
+  if (c.dir === 'sub') {
+    // era un depósito que restó: se regresa a Cripto
+    if (h) {
+      h.amount += c.amount;
+      h.usd = Math.round((h.usd + c.usd) * 100) / 100;
+      h.entryPrice = h.usd / h.amount;
+    } else {
+      state.holdings.push({
+        id: state.nextHoldId++,
+        coin: c.coin,
+        usd: Math.round(c.usd * 100) / 100,
+        amount: c.amount,
+        entryPrice: c.usd / c.amount,
+        date: new Date().toISOString().slice(0, 10)
+      });
+    }
+    showToast('Se regresó a Cripto');
+    return;
+  }
+  if (!h) return;
+  h.amount -= c.amount;
+  h.usd = Math.round((h.usd - c.usd) * 100) / 100;
+  if (h.amount <= 1e-9 || h.usd <= 0.005) {
+    state.holdings = state.holdings.filter(x => x !== h);
+  } else {
+    h.entryPrice = h.usd / h.amount;
+  }
+  showToast('Se restó de Cripto');
+}
+
+// Une posiciones repetidas de la misma moneda (datos guardados antes)
+function mergeHoldings() {
+  const out = [];
+  state.holdings.forEach(h => {
+    const f = out.find(x => x.coin === h.coin);
+    if (f) {
+      f.amount += h.amount;
+      f.usd = Math.round((f.usd + h.usd) * 100) / 100;
+      f.entryPrice = f.usd / f.amount;
+      if (h.date < f.date) f.date = h.date;
+    } else out.push(h);
+  });
+  state.holdings = out;
+}
+
+// Detecta una cripto en la nota (primera palabra: ltc, trx, bitcoin…)
+function coinFromNote(note) {
+  const t = (note || '').toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean)[0];
+  if (!t) return null;
+  return COINS.find(c => c.sym.toLowerCase() === t || c.id === t || c.name.toLowerCase() === t) || null;
+}
+
+// ---- TOAST ----
+let toastTimer = null;
+function showToast(msg, isErr) {
+  const toast = document.getElementById('save-toast');
+  toast.textContent = msg || '✓ guardado';
+  toast.classList.toggle('err', !!isErr);
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), isErr ? 3000 : 1800);
+}
+
+// Cargar datos guardados antes de renderizar
+loadState();
+mergeHoldings();
+
+// Montos en la moneda elegida (los datos están en USD)
+const fmt = n => { const c = CURRENCIES[shownCur()]; return c.sym + Math.abs(toCur(n)).toLocaleString('es-MX', { minimumFractionDigits: c.dec, maximumFractionDigits: c.dec }); };
+// Precio unitario en la moneda elegida (más decimales si es menor a 1)
+const fmtUnit = n => { const c = CURRENCIES[shownCur()], v = toCur(n); return c.sym + v.toLocaleString('es-MX', { minimumFractionDigits: c.dec, maximumFractionDigits: v < 1 ? 6 : c.dec }); };
+const fmtCoin = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+const fmtPrice = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
+
+const siteBalance = s => s.txs.reduce((a, t) => a + (t.type === 'ret' ? t.amount : -t.amount), 0);
+
+function updateSummary() {
+  const allTx = state.sites.flatMap(s => s.txs);
+  const deps = allTx.filter(t => t.type === 'dep');
+  const rets = allTx.filter(t => t.type === 'ret');
+  const dep = deps.reduce((a, t) => a + t.amount, 0);
+  const ret = rets.reduce((a, t) => a + t.amount, 0);
+  const net = ret - dep;
+
+  document.getElementById('sum-dep').textContent = fmt(dep);
+  document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '') + usdTxt(dep);
+  document.getElementById('sum-ret').textContent = fmt(ret);
+  document.getElementById('sum-ret-count').textContent = rets.length + ' movimiento' + (rets.length !== 1 ? 's' : '') + usdTxt(ret);
+
+  const netEl = document.getElementById('sum-net');
+  netEl.textContent = (net >= 0 ? '+' : '-') + fmt(net);
+  netEl.className = 'card-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : 'neutral');
+  document.getElementById('sum-sites-count').textContent = state.sites.length + ' plataforma' + (state.sites.length !== 1 ? 's' : '') + usdTxt(net, true);
+}
+
+function addSite() {
+  const inp = document.getElementById('new-site-input');
+  const name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  state.sites.push({ id: state.nextSiteId++, name, txs: [], open: true });
+  inp.value = '';
+  render();
+  saveState();
+}
+
+document.getElementById('new-site-input').addEventListener('keydown', e => { if (e.key === 'Enter') addSite(); });
+
+function deleteSite(id) {
+  if (!confirm('¿Eliminar esta plataforma y todos sus movimientos?')) return;
+  state.sites = state.sites.filter(s => s.id !== id);
+  render();
+  saveState();
+}
+
+async function addTx(siteId) {
+  const site = state.sites.find(s => s.id === siteId);
+  const date = document.getElementById('d-date-' + siteId).value;
+  const type = document.getElementById('d-type-' + siteId).value;
+  const rawAmt = document.getElementById('d-amt-' + siteId).value;
+  const amount = parseFloat(rawAmt);
+  const note = document.getElementById('d-note-' + siteId).value.trim();
+  if (!date || isNaN(amount) || amount <= 0) {
+    document.getElementById('d-amt-' + siteId).style.borderColor = '#f05b6a';
+    setTimeout(() => document.getElementById('d-amt-' + siteId).style.borderColor = '', 1200);
+    return;
+  }
+  const tx = { id: state.nextTxId++, date, type, amount: Math.round(amount * 100) / 100, note };
+  site.txs.push(tx);
+  site.txs.sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById('d-amt-' + siteId).value = '';
+  document.getElementById('d-note-' + siteId).value = '';
+  render();
+  saveState();
+
+  // Automatización: retiro con una cripto en la nota (ej. "ltc") -> se suma a Cripto
+  const coin = coinFromNote(note);
+  if (coin) {
+    try {
+      const got = await fetchPrices([coin.id]);
+      const price = got[coin.id];
+      if (!price) throw new Error('sin precio');
+      prices[coin.id] = price;
+      let msg;
+      if (type === 'ret') {
+        mergeInto(coin.id, tx.amount, price);
+        tx.crypto = { coin: coin.id, usd: tx.amount, amount: tx.amount / price };
+        msg = '+' + fmtCoin(tx.crypto.amount) + ' ' + coin.sym + ' sumado a Cripto';
+      } else {
+        const r = subtractFrom(coin.id, tx.amount, price);
+        if (!r) {
+          setTimeout(() => showToast('No tienes suficiente ' + coin.sym + ' en Cripto', true), 450);
+          return;
+        }
+        tx.crypto = { coin: coin.id, usd: r.usd, amount: r.amount, dir: 'sub' };
+        msg = '-' + fmtCoin(r.amount) + ' ' + coin.sym + ' restado de Cripto';
+      }
+      renderCrypto();
+      saveState();
+      setTimeout(() => showToast(msg), 450);
+      refreshPrices();
+    } catch(e) {
+      console.warn('No se pudo sumar a cripto:', e);
+      setTimeout(() => showToast('No se pudo actualizar ' + coin.sym + ' en Cripto', true), 450);
+    }
+  }
+}
+
+function deleteTx(siteId, txId) {
+  const site = state.sites.find(s => s.id === siteId);
+  const gone = site.txs.find(t => t.id === txId);
+  if (gone && gone.crypto) { undoCrypto(gone.crypto); renderCrypto(); }
+  site.txs = site.txs.filter(t => t.id !== txId);
+  render();
+  saveState();
+}
+
+function toggleSite(id) {
+  const site = state.sites.find(s => s.id === id);
+  site.open = !site.open;
+  const body = document.getElementById('body-' + id);
+  const chev = document.getElementById('chev-' + id);
+  body.classList.toggle('open', site.open);
+  chev.classList.toggle('open', site.open);
+  saveState(); // guardar también el estado abierto/cerrado
+}
+
+function render() {
+  updateSummary();
+  const container = document.getElementById('sites-container');
+  const noMsg = document.getElementById('no-sites-msg');
+  noMsg.style.display = state.sites.length ? 'none' : 'block';
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  container.innerHTML = '';
+  state.sites.forEach(site => {
+    const bal = siteBalance(site);
+    const balClass = bal > 0 ? 'pos' : bal < 0 ? 'neg' : 'zero';
+    const balStr = (bal > 0 ? '+' : bal < 0 ? '-' : '') + fmt(bal);
+    const isOpen = site.open !== false;
+
+    const block = document.createElement('div');
+    block.className = 'site-block';
+    block.innerHTML = `
+      <div class="site-header" onclick="toggleSite(${site.id})">
+        <div class="site-title">
+          <span class="site-dot"></span>
+          ${escHtml(site.name)}
+        </div>
+        <div class="site-meta">
+          <span class="site-balance ${balClass}">${balStr}${usdHtml(bal, bal !== 0)}</span>
+          <button class="del-site-btn" onclick="event.stopPropagation(); deleteSite(${site.id})" title="Eliminar plataforma">✕</button>
+          <span class="chevron ${isOpen ? 'open' : ''}" id="chev-${site.id}">▼</span>
+        </div>
+      </div>
+      <div class="site-body ${isOpen ? 'open' : ''}" id="body-${site.id}">
+        <div class="tx-table-wrap">
+          ${site.txs.length === 0 ? `<div class="empty-msg">Sin movimientos. Agrega uno abajo.</div>` : `
+          <table>
+            <thead><tr>
+              <th>Fecha</th><th>Tipo</th><th>Monto</th><th>Nota</th><th></th>
+            </tr></thead>
+            <tbody>
+              ${site.txs.map(t => `
+                <tr>
+                  <td style="font-family:var(--mono);font-size:12px;color:var(--text-muted)">${t.date}</td>
+                  <td><span class="badge badge-${t.type}">${t.type === 'dep' ? 'Depósito' : 'Retiro'}</span></td>
+                  <td class="amount-${t.type}">${t.type === 'dep' ? '+' : '-'}${fmt(t.amount)}${usdHtml(t.amount)}</td>
+                  <td class="tx-note">${escHtml(t.note) || '—'}</td>
+                  <td><button class="del-btn" onclick="deleteTx(${site.id},${t.id})" title="Eliminar">✕</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`}
+        </div>
+        <div class="add-tx-form">
+          <input class="inp-date" type="date" id="d-date-${site.id}" value="${today}" />
+          <select class="inp-type" id="d-type-${site.id}">
+            <option value="dep">Depósito</option>
+            <option value="ret">Retiro</option>
+          </select>
+          <input class="inp-amount" type="number" id="d-amt-${site.id}" placeholder="Monto" min="0" step="0.01" />
+          <input class="inp-note" type="text" id="d-note-${site.id}" placeholder="Nota (ej. ltc → mueve Cripto)" />
+          <button class="btn-add-tx" onclick="addTx(${site.id})">+ Agregar</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(block);
+
+    document.getElementById('d-amt-' + site.id).addEventListener('keydown', e => { if (e.key === 'Enter') addTx(site.id); });
+    document.getElementById('d-note-' + site.id).addEventListener('keydown', e => { if (e.key === 'Enter') addTx(site.id); });
+  });
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// =====================================================
+// ---- CRIPTO ----
+// =====================================================
+const PRICE_API = 'https://api.coingecko.com/api/v3/simple/price';
+
+async function fetchPrices(ids) {
+  const url = PRICE_API + '?vs_currencies=usd&ids=' + encodeURIComponent(ids.join(','));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const out = {};
+  ids.forEach(id => { if (data[id] && typeof data[id].usd === 'number') out[id] = data[id].usd; });
+  return out;
+}
+
+let refreshing = false;
+async function refreshPrices(manual) {
+  if (refreshing) return;
+  const ids = [...new Set(state.holdings.map(h => h.coin))];
+  const statusEl = document.getElementById('price-status');
+  refreshFx();
+  refreshTicker(!!manual);
+  if (!ids.length) { statusEl.textContent = 'sin monedas'; renderCrypto(); return; }
+  refreshing = true;
+  try {
+    const got = await fetchPrices(ids);
+    Object.assign(prices, got);
+    statusEl.textContent = 'actualizado ' + new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer precios:', e);
+    statusEl.textContent = 'error al actualizar precios';
+    if (manual) showToast('No se pudieron traer los precios', true);
+  }
+  refreshing = false;
+  renderCrypto();
+}
+
+async function addHolding() {
+  const coinId = document.getElementById('h-coin').value;
+  const usdInp = document.getElementById('h-usd');
+  const usd = parseFloat(usdInp.value);
+  if (isNaN(usd) || usd <= 0) {
+    usdInp.style.borderColor = '#f05b6a';
+    setTimeout(() => usdInp.style.borderColor = '', 1200);
+    return;
+  }
+  const btn = document.getElementById('h-btn');
+  btn.disabled = true;
+  try {
+    const got = await fetchPrices([coinId]);
+    const price = got[coinId];
+    if (!price) throw new Error('sin precio');
+    prices[coinId] = price;
+    mergeInto(coinId, usd, price);
+    usdInp.value = '';
+    renderCrypto();
+    saveState();
+    refreshPrices();
+  } catch(e) {
+    console.warn('Error al agregar moneda:', e);
+    showToast('No se pudo traer el precio, intenta de nuevo', true);
+  }
+  btn.disabled = false;
+}
+
+function deleteHolding(id) {
+  if (!confirm('¿Eliminar esta posición?')) return;
+  state.holdings = state.holdings.filter(h => h.id !== id);
+  renderCrypto();
+  saveState();
+}
+
+function renderCrypto() {
+  const wrap = document.getElementById('holdings-wrap');
+  let invested = 0, value = 0;
+
+  if (!state.holdings.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin monedas. Agrega cuántos USD tienes en una cripto y se calcula la cantidad.</div>';
+  } else {
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Moneda</th><th>Cantidad</th><th>Invertido</th><th>Precio</th><th>Valor actual</th><th>Cambio</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${state.holdings.map(h => {
+            const c = coinById(h.coin) || { sym: h.coin.toUpperCase(), name: h.coin };
+            const p = prices[h.coin];
+            const cur = p != null ? h.amount * p : null;
+            invested += h.usd;
+            if (cur != null) value += cur; else value += h.usd;
+            let chg = '<span class="mono" style="color:var(--text-dim)">—</span>';
+            if (cur != null) {
+              const diff = cur - h.usd;
+              const pct = h.usd ? (diff / h.usd) * 100 : 0;
+              const cls = diff >= 0 ? 'chg-up' : 'chg-down';
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>${usdHtml(diff, true)}`;
+            }
+            return `
+              <tr>
+                <td><div class="coin-sym">${escHtml(c.sym)}</div><div class="coin-sub">${escHtml(c.name)} · ${h.date}</div></td>
+                <td class="mono">${fmtCoin(h.amount)} ${escHtml(c.sym)}</td>
+                <td class="mono">${fmt(h.usd)}${usdHtml(h.usd)}</td>
+                <td class="mono">${p != null ? fmtUnit(p) + usdHtml(p) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) + usdHtml(cur) : '—'}</td>
+                <td>${chg}</td>
+                <td><button class="del-btn" onclick="deleteHolding(${h.id})" title="Eliminar">✕</button></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const pnl = value - invested;
+  document.getElementById('c-invested').textContent = fmt(invested);
+  document.getElementById('c-value').textContent = fmt(value);
+  const pnlEl = document.getElementById('c-pnl');
+  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  document.getElementById('c-invested-mx').textContent = usdRef(invested);
+  document.getElementById('c-value-mx').textContent = usdRef(value);
+  document.getElementById('c-pnl-mx').textContent = usdRef(pnl, true);
+}
+
+// =====================================================
+// ---- MONEDA DE VISUALIZACIÓN ----
+// Los datos se guardan siempre en USD; esto solo cambia cómo se muestran.
+// =====================================================
+const CURRENCIES = {
+  USD: { sym: '$',    dec: 2 },
+  MXN: { sym: 'MX$',  dec: 2 },
+  ARS: { sym: 'AR$',  dec: 2 },
+  PEN: { sym: 'S/ ',  dec: 2 },
+  COP: { sym: 'COL$', dec: 0 },
+  CLP: { sym: 'CLP$', dec: 0 },
+  EUR: { sym: '€',    dec: 2 },
+  BRL: { sym: 'R$',   dec: 2 }
+};
+const RATES_TTL = 6 * 60 * 60 * 1000; // las tasas se piden como mucho cada 6 h
+let rates = null;        // { MXN: 18.73, ARS: 1527.85, ... } por 1 USD
+let ratesT = 0;          // cuándo se obtuvieron
+let ratesStale = false;  // true si la API falló y se usan las guardadas
+let currency = 'USD';
+try {
+  const saved = JSON.parse(localStorage.getItem(RATES_KEY) || 'null');
+  if (saved && saved.rates) { rates = saved.rates; ratesT = saved.t || 0; }
+  const c = localStorage.getItem(CURRENCY_KEY);
+  if (CURRENCIES[c]) currency = c;
+} catch(e) {}
+
+// Moneda que realmente se muestra: si todavía no hay tasa para la elegida, USD
+const shownCur = () => currency !== 'USD' && rates && rates[currency] ? currency : 'USD';
+const toCur = n => shownCur() === 'USD' ? n : n * rates[currency];
+
+// Valor en USD chiquito debajo de cada monto (no se muestra si la moneda es USD)
+function usdRef(n, signed) {
+  if (shownCur() === 'USD') return '';
+  const a = Math.abs(n);
+  return (signed ? (n >= 0 ? '+' : '-') : '') + 'US$' + a.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: a && a < 1 ? 6 : 2 });
+}
+const usdTxt = (n, signed) => shownCur() === 'USD' ? '' : ' · ' + usdRef(n, signed);
+const usdHtml = (n, signed) => shownCur() === 'USD' ? '' : '<span class="mxn usd-ref">' + usdRef(n, signed) + '</span>';
+
+function updateFxLabel() {
+  const el = document.getElementById('fx-label');
+  const c = shownCur();
+  if (currency === 'USD') el.textContent = '';
+  else if (c === 'USD') el.textContent = 'sin tasa para ' + currency + ' · mostrando USD';
+  else el.textContent = '1 USD = ' + CURRENCIES[c].sym + rates[c].toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (ratesStale ? ' · tasas guardadas' : '');
+}
+
+async function fetchRates() {
+  const pick = src => {
+    const out = {};
+    Object.keys(CURRENCIES).forEach(c => { if (c !== 'USD' && typeof src[c] === 'number') out[c] = src[c]; });
+    return out;
+  };
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const data = await res.json();
+    const r = pick((data && data.rates) || {});
+    if (Object.keys(r).length) return r;
+  } catch(e) { console.warn('Tasas principal falló:', e); }
+  // Respaldo, también gratis y sin key
+  const res = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json');
+  const data = await res.json();
+  const up = {};
+  Object.keys((data && data.usd) || {}).forEach(k => { up[k.toUpperCase()] = data.usd[k]; });
+  const r = pick(up);
+  if (Object.keys(r).length) return r;
+  throw new Error('sin tasas');
+}
+
+let fetchingRates = false;
+async function refreshFx(force) {
+  if (fetchingRates) return;
+  if (!force && rates && Date.now() - ratesT < RATES_TTL) return; // caché vigente
+  fetchingRates = true;
+  try {
+    rates = await fetchRates();
+    ratesT = Date.now();
+    ratesStale = false;
+    try { localStorage.setItem(RATES_KEY, JSON.stringify({ rates, t: ratesT })); } catch(e) {}
+  } catch(e) {
+    console.warn('No se pudieron actualizar las tasas, uso las guardadas:', e);
+    ratesStale = !!rates;
+    ratesT = Date.now() - RATES_TTL + 10 * 60 * 1000; // reintenta en 10 min
+  }
+  fetchingRates = false;
+  updateFxLabel();
+  if (currency !== 'USD') { render(); renderCrypto(); renderSkins(); }
+}
+
+function setCurrency(c) {
+  if (!CURRENCIES[c]) return;
+  currency = c;
+  try { localStorage.setItem(CURRENCY_KEY, c); } catch(e) {}
+  updateFxLabel();
+  render();
+  renderCrypto();
+  renderSkins();
+  if (c !== 'USD' && !(rates && rates[c])) refreshFx(true);
+}
+
+// =====================================================
+// ---- WALLETS (direcciones guardadas) ----
+// =====================================================
+function applyWalletsOpen() {
+  document.getElementById('wallets-body').classList.toggle('open', state.walletsOpen);
+  document.getElementById('wallets-chev').classList.toggle('open', state.walletsOpen);
+  document.getElementById('wallets-head').classList.toggle('collapsed', !state.walletsOpen);
+}
+
+function toggleWallets() {
+  state.walletsOpen = !state.walletsOpen;
+  applyWalletsOpen();
+  saveState();
+}
+
+function renderWallets() {
+  applyWalletsOpen();
+  const wrap = document.getElementById('wallets-wrap');
+  document.getElementById('wallets-count').textContent = state.wallets.length + ' wallet' + (state.wallets.length !== 1 ? 's' : '');
+  if (!state.wallets.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin wallets. Guarda aquí tus direcciones públicas.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Nombre</th><th>Moneda</th><th>Dirección</th><th></th><th></th></tr></thead>
+      <tbody>
+        ${state.wallets.map(w => {
+          const short = w.address.length > 22 ? w.address.slice(0, 10) + '…' + w.address.slice(-8) : w.address;
+          return `
+            <tr>
+              <td class="coin-sym">${escHtml(w.name)}</td>
+              <td class="mono">${escHtml(w.coin)}</td>
+              <td class="addr" title="${escHtml(w.address)}">${escHtml(short)}</td>
+              <td><button class="btn-refresh" onclick="copyAddr(${w.id})">copiar</button></td>
+              <td><button class="del-btn" onclick="deleteWallet(${w.id})" title="Eliminar">✕</button></td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function addWallet() {
+  const nameEl = document.getElementById('w-name');
+  const addrEl = document.getElementById('w-addr');
+  const name = nameEl.value.trim();
+  const address = addrEl.value.trim();
+  const coin = document.getElementById('w-coin').value;
+  if (!name || !address) {
+    (!name ? nameEl : addrEl).style.borderColor = '#f05b6a';
+    setTimeout(() => { nameEl.style.borderColor = ''; addrEl.style.borderColor = ''; }, 1200);
+    return;
+  }
+  state.wallets.push({ id: state.nextWalletId++, name, coin, address });
+  nameEl.value = '';
+  addrEl.value = '';
+  renderWallets();
+  saveState();
+}
+
+function deleteWallet(id) {
+  if (!confirm('¿Eliminar esta wallet?')) return;
+  state.wallets = state.wallets.filter(w => w.id !== id);
+  renderWallets();
+  saveState();
+}
+
+async function copyAddr(id) {
+  const w = state.wallets.find(x => x.id === id);
+  if (!w) return;
+  try {
+    await navigator.clipboard.writeText(w.address);
+  } catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = w.address;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch(_) {}
+    ta.remove();
+  }
+  showToast('✓ dirección copiada');
+}
+
+// =====================================================
+// ---- SKINS CS2 (precios de Skinport vía /api/skins) ----
+// =====================================================
+const SKIN_API = '/api/skins';
+let skinPrices = {}; // { 'AK-47 | Redline (Field-Tested)': {name,min,sug} }
+
+const skinPrice = p => p ? (p.min != null ? p.min : p.sug) : null;
+
+async function fetchSkinPrices(names) {
+  const res = await fetch(SKIN_API + '?names=' + encodeURIComponent(names.join('\n')));
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const out = {};
+  Object.values(data.prices || {}).forEach(p => { out[p.name] = p; });
+  return out;
+}
+
+function applySkinsOpen() {
+  document.getElementById('skins-body').classList.toggle('open', state.skinsOpen);
+  document.getElementById('skins-chev').classList.toggle('open', state.skinsOpen);
+  document.getElementById('skins-head').classList.toggle('collapsed', !state.skinsOpen);
+}
+
+function toggleSkins() {
+  state.skinsOpen = !state.skinsOpen;
+  applySkinsOpen();
+  saveState();
+}
+
+let refreshingSkins = false;
+async function refreshSkins(manual) {
+  if (refreshingSkins) return;
+  const names = [...new Set(state.skins.map(h => h.name))];
+  const statusEl = document.getElementById('skin-status');
+  if (!names.length) { statusEl.textContent = 'sin skins'; renderSkins(); return; }
+  refreshingSkins = true;
+  try {
+    Object.assign(skinPrices, await fetchSkinPrices(names));
+    statusEl.textContent = 'Skinport · ' + new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer precios de skins:', e);
+    statusEl.textContent = 'error al actualizar skins';
+    if (manual) showToast('No se pudieron traer los precios de skins', true);
+  }
+  refreshingSkins = false;
+  renderSkins();
+}
+
+async function addSkin() {
+  const nameEl = document.getElementById('s-name');
+  const qtyEl = document.getElementById('s-qty');
+  const priceEl = document.getElementById('s-price');
+  const name = nameEl.value.trim();
+  const qty = parseInt(qtyEl.value, 10);
+  const paid = parseFloat(priceEl.value);
+  if (!name || isNaN(qty) || qty < 1) {
+    (!name ? nameEl : qtyEl).style.borderColor = '#f05b6a';
+    setTimeout(() => { nameEl.style.borderColor = ''; qtyEl.style.borderColor = ''; }, 1200);
+    return;
+  }
+  const btn = document.getElementById('s-btn');
+  btn.disabled = true;
+  try {
+    const got = await fetchSkinPrices([name]);
+    const p = Object.values(got)[0];
+    if (!p) { showToast('No encontré esa skin, elige una de las sugerencias', true); btn.disabled = false; return; }
+    Object.assign(skinPrices, got);
+    const each = (!isNaN(paid) && paid > 0) ? paid : skinPrice(p);
+    if (!each) { showToast('Esa skin no tiene precio, ponlo tú', true); btn.disabled = false; return; }
+    const cost = Math.round(each * qty * 100) / 100;
+    const h = state.skins.find(x => x.name === p.name);
+    if (h) { h.qty += qty; h.cost = Math.round((h.cost + cost) * 100) / 100; }
+    else state.skins.push({ id: state.nextSkinId++, name: p.name, qty, cost, date: new Date().toISOString().slice(0, 10) });
+    nameEl.value = ''; priceEl.value = ''; qtyEl.value = '1';
+    renderSkins();
+    saveState();
+    refreshSkins();
+  } catch(e) {
+    console.warn('Error al agregar skin:', e);
+    showToast('No se pudo traer el precio (¿falta /api/skins?)', true);
+  }
+  btn.disabled = false;
+}
+
+function deleteSkin(id) {
+  if (!confirm('¿Eliminar esta skin?')) return;
+  state.skins = state.skins.filter(h => h.id !== id);
+  renderSkins();
+  saveState();
+}
+
+function renderSkins() {
+  applySkinsOpen();
+  const wrap = document.getElementById('skins-wrap');
+  let invested = 0, value = 0;
+
+  if (!state.skins.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin skins. Busca una por nombre, pon la cantidad y lo que pagaste (si lo dejas vacío usa el precio actual).</div>';
+  } else {
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Skin</th><th>Cant.</th><th>Invertido</th><th>Precio c/u</th><th>Valor actual</th><th>Cambio</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${state.skins.map(h => {
+            const p = skinPrices[h.name];
+            const unit = skinPrice(p);
+            const cur = unit != null ? unit * h.qty : null;
+            invested += h.cost;
+            value += cur != null ? cur : h.cost;
+            let chg = '<span class="mono" style="color:var(--text-dim)">—</span>';
+            if (cur != null) {
+              const diff = cur - h.cost;
+              const pct = h.cost ? (diff / h.cost) * 100 : 0;
+              const cls = diff >= 0 ? 'chg-up' : 'chg-down';
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>${usdHtml(diff, true)}`;
+            }
+            return `
+              <tr>
+                <td><div class="skin-name">${escHtml(h.name)}</div><div class="coin-sub">desde ${h.date}</div></td>
+                <td class="mono">x${h.qty}</td>
+                <td class="mono">${fmt(h.cost)}${usdHtml(h.cost)}<div class="mxn">${fmt(h.cost / h.qty)} c/u</div></td>
+                <td class="mono">${unit != null ? fmt(unit) + usdHtml(unit) : '—'}</td>
+                <td class="mono">${cur != null ? fmt(cur) + usdHtml(cur) : '—'}</td>
+                <td>${chg}</td>
+                <td><button class="del-btn" onclick="deleteSkin(${h.id})" title="Eliminar">✕</button></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const pnl = value - invested;
+  document.getElementById('s-invested').textContent = fmt(invested);
+  document.getElementById('s-value').textContent = fmt(value);
+  const pnlEl = document.getElementById('s-pnl');
+  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  document.getElementById('s-invested-mx').textContent = usdRef(invested);
+  document.getElementById('s-value-mx').textContent = usdRef(value);
+  document.getElementById('s-pnl-mx').textContent = usdRef(pnl, true);
+}
+
+// Sugerencias de nombres mientras escribes
+let skinSearchTimer = null;
+document.getElementById('s-name').addEventListener('input', e => {
+  clearTimeout(skinSearchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3) return;
+  skinSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(SKIN_API + '?q=' + encodeURIComponent(q));
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('skin-list').innerHTML = (data.results || []).map(n => `<option value="${escHtml(n)}"></option>`).join('');
+    } catch(err) {}
+  }, 350);
+});
+
+// Skinport cachea 5 min: se actualiza cada 5 min y al volver a la pestaña
+setInterval(() => refreshSkins(), 300000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSkins(); });
+
+// =====================================================
+// ---- TICKER: precios en vivo de todas las monedas ----
+// =====================================================
+let ticker = {};      // { bitcoin: { usd, chg } }
+let tickerT = 0;
+let tickerPrev = {};  // precio anterior para el destello
+
+async function refreshTicker(force) {
+  if (!force && Date.now() - tickerT < 30000) return;
+  tickerT = Date.now();
+  const statusEl = document.getElementById('ticker-status');
+  try {
+    const url = PRICE_API + '?vs_currencies=usd&include_24hr_change=true&ids=' + COINS.map(c => c.id).join(',');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    tickerPrev = {};
+    Object.keys(ticker).forEach(id => { tickerPrev[id] = ticker[id].usd; });
+    COINS.forEach(c => {
+      const d = data[c.id];
+      if (d && typeof d.usd === 'number') ticker[c.id] = { usd: d.usd, chg: d.usd_24h_change };
+    });
+    statusEl.textContent = new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer el ticker:', e);
+    statusEl.textContent = 'sin conexión';
+    tickerT = Date.now() - 20000; // reintenta pronto
+  }
+  renderTicker();
+}
+
+function renderTicker() {
+  const list = document.getElementById('ticker-list');
+  list.innerHTML = COINS.map(c => {
+    const t = ticker[c.id];
+    if (!t) return `<div class="t-row"><div><div class="coin-sym">${c.sym}</div><div class="coin-sub">${c.name}</div></div><div class="t-right mono" style="color:var(--text-dim)">—</div></div>`;
+    const prev = tickerPrev[c.id];
+    const flash = prev != null && prev !== t.usd ? (t.usd > prev ? ' flash-up' : ' flash-down') : '';
+    const chg = typeof t.chg === 'number' ? t.chg : null;
+    const chgHtml = chg == null ? '' : `<div class="t-chg ${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%</div>`;
+    return `<div class="t-row">
+      <div><div class="coin-sym">${c.sym}</div><div class="coin-sub">${c.name}</div></div>
+      <div class="t-right"><div class="t-price${flash}">${fmtPrice(t.usd)}</div>${chgHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+// Select de monedas
+// Selector de moneda (se recuerda al recargar)
+const curSel = document.getElementById('currency-select');
+curSel.innerHTML = Object.keys(CURRENCIES).map(c => `<option value="${c}">${c}</option>`).join('');
+curSel.value = currency;
+curSel.addEventListener('change', e => setCurrency(e.target.value));
+
+document.getElementById('h-coin').innerHTML = COINS.map(c => `<option value="${c.id}">${c.sym} · ${c.name}</option>`).join('');
+document.getElementById('w-coin').innerHTML = COINS.map(c => `<option value="${c.sym}">${c.sym}</option>`).join('') + '<option value="OTRA">OTRA</option>';
+document.getElementById('w-addr').addEventListener('keydown', e => { if (e.key === 'Enter') addWallet(); });
+document.getElementById('h-usd').addEventListener('keydown', e => { if (e.key === 'Enter') addHolding(); });
+
+// Precios en vivo: cada 60 s y al volver a la pestaña
+setInterval(() => refreshPrices(), 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPrices(); });
+
+// Date label
+const now = new Date();
+document.getElementById('today-label').textContent = now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+showTab(location.hash.slice(1));
+window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+
+updateFxLabel();
+render();
+renderCrypto();
+renderWallets();
+renderSkins();
+renderTicker();
+refreshPrices();
+refreshSkins();
+</script>
+</body>
+</html>
