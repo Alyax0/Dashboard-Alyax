@@ -462,12 +462,16 @@
   .recent-site { font-weight: 500; font-size: 13px; white-space: nowrap; }
   .recent-date { font-family: var(--mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
   .recent-more { padding: 0.75rem 1rem; text-align: center; border-top: 1px solid var(--border); }
+  .recent-block { margin-top: 2rem; }
 
-  @media (max-width: 600px) {
-    .donut-wrap { flex-direction: column; align-items: stretch; gap: 1rem; padding: 1rem; }
-    .donut { margin: 0 auto; }
-    .donut-legend { min-width: 0; }
-    /* Últimos movimientos: cada fila pasa a ser una tarjeta compacta */
+  /* Pantallas anchas: columna derecha fija, como "Precios en vivo" a la izquierda */
+  @media (min-width: 1500px) {
+    .recent-block { position: fixed; top: 2rem; left: calc(50% + 454px); width: 280px; margin: 0 !important; max-height: calc(100vh - 4rem); overflow-y: auto; }
+    .recent-block .crypto-head { padding: 0.85rem 1rem; }
+  }
+
+  /* Celular y columna derecha: cada movimiento pasa a ser una tarjeta compacta */
+  @media (max-width: 600px), (min-width: 1500px) {
     #recent-wrap thead { display: none; }
     #recent-wrap tr {
       display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center;
@@ -482,6 +486,12 @@
     #recent-wrap .recent-date { grid-area: date; text-align: right; }
     #recent-wrap .tx-note { grid-column: 1 / -1; }
     #recent-wrap .recent-nonote { display: none; }
+  }
+
+  @media (max-width: 600px) {
+    .donut-wrap { flex-direction: column; align-items: stretch; gap: 1rem; padding: 1rem; }
+    .donut { margin: 0 auto; }
+    .donut-legend { min-width: 0; }
     .header-right { text-align: left; }
     .summary { grid-template-columns: 1fr 1fr; }
     .summary .card:last-child { grid-column: span 2; }
@@ -597,18 +607,6 @@
     </div>
   </div>
 
-  <!-- ---- ÚLTIMOS MOVIMIENTOS ---- -->
-  <div class="crypto-block">
-    <div class="crypto-head">
-      <div class="crypto-title"><span class="site-dot"></span>Últimos movimientos</div>
-      <div class="crypto-status"><span id="recent-count"></span></div>
-    </div>
-    <div class="tx-table-wrap" id="recent-wrap"></div>
-    <div class="recent-more" id="recent-more" hidden>
-      <button class="btn-refresh" onclick="showMoreRecent()">Ver más</button>
-    </div>
-  </div>
-
   <div class="add-site-row">
     <input id="new-site-input" placeholder="Nombre del sitio (Binance, Bet365, PayPal…)" />
     <button class="btn-primary" onclick="addSite()">+ Agregar sitio</button>
@@ -618,6 +616,19 @@
   <div id="no-sites-msg" class="no-sites">
     <p>Sin sitios todavía</p>
     <small>Escribe el nombre de un sitio arriba y agrégalo para empezar.</small>
+  </div>
+
+  <!-- ---- ÚLTIMOS MOVIMIENTOS ---- -->
+  <!-- Al final de Finanzas; en pantallas anchas pasa a la columna derecha -->
+  <div class="crypto-block recent-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Últimos movimientos</div>
+      <div class="crypto-status"><span id="recent-count"></span></div>
+    </div>
+    <div class="tx-table-wrap" id="recent-wrap"></div>
+    <div class="recent-more" id="recent-more" hidden>
+      <button class="btn-refresh" onclick="showMoreRecent()">Ver más</button>
+    </div>
   </div>
 
   </div>

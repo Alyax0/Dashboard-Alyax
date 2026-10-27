@@ -29,7 +29,7 @@ Deploys happen through Vercel's GitHub integration on pushes to `main` (remote: 
 **Sections:**
 - *Sites* (`state.sites[].txs[]`): deposits (`dep`) / withdrawals (`ret`) per site; summary cards are computed in `updateSummary()`.
 - *Crypto holdings* (`state.holdings`): one row per coin (`mergeInto` / `subtractFrom` keep it that way). Supported coins are the `COINS` array, keyed by CoinGecko id. `renderCrypto()` also draws the SVG donut (`renderDonut` / `setDonutActive`): share of current value per coin, max 6 segments (the smallest fold into a gray "Otras"), colors from the dark-mode validated categorical palette in `DONUT_COLORS`, assigned in `COINS` order so a coin keeps its color as prices move.
-- *Últimos movimientos*: `renderRecent()` (called at the end of `render()`) lists all sites' transactions newest first, 10 at a time (`showMoreRecent`); on phones the rows become stacked cards via CSS.
+- *Últimos movimientos*: `renderRecent()` (called at the end of `render()`) lists all sites' transactions newest first, 10 at a time (`showMoreRecent`). It sits at the end of the Finanzas tab; at ≥1500px it becomes a fixed right-hand column mirroring the ticker, and there and on phones the rows become stacked cards via CSS.
 - *Wallets* (`state.wallets`): saved public addresses.
 - *CS2 skins* (`state.skins`): priced via `/api/skins`.
 - *Ticker* sidebar: live prices + 24h change for all `COINS`.
