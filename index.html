@@ -429,7 +429,59 @@
     font-family: var(--mono);
   }
 
+  /* ---- DONA CRIPTO ---- */
+  .donut-wrap {
+    display: flex; align-items: center; gap: 1.75rem; flex-wrap: wrap;
+    padding: 1.25rem; border-bottom: 1px solid var(--border);
+  }
+  .donut-wrap[hidden] { display: none; }
+  .donut { position: relative; width: 168px; height: 168px; flex-shrink: 0; }
+  .donut svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); }
+  .donut-seg { fill: none; cursor: pointer; transition: opacity 0.15s, stroke-width 0.15s; }
+  .donut.has-active .donut-seg { opacity: 0.35; }
+  .donut.has-active .donut-seg.active { opacity: 1; stroke-width: 14; }
+  .donut-center {
+    position: absolute; inset: 0; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  }
+  .donut-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .donut-value { font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: -0.5px; margin-top: 4px; white-space: nowrap; }
+  .donut-sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; }
+  .donut-legend { flex: 1; min-width: 220px; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+  .donut-legend li {
+    display: grid; grid-template-columns: 10px 1fr auto auto; align-items: center; gap: 10px;
+    padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; outline: none;
+  }
+  .donut-legend li:hover, .donut-legend li.active, .donut-legend li:focus-visible { background: rgba(255,255,255,0.04); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 3px; }
+  .legend-name .coin-sub { display: inline; margin-left: 4px; }
+  .legend-pct { font-family: var(--mono); font-size: 12px; color: var(--text-muted); text-align: right; min-width: 48px; }
+  .legend-val { font-family: var(--mono); font-size: 13px; text-align: right; }
+
+  /* ---- ÚLTIMOS MOVIMIENTOS ---- */
+  .recent-site { font-weight: 500; font-size: 13px; white-space: nowrap; }
+  .recent-date { font-family: var(--mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+  .recent-more { padding: 0.75rem 1rem; text-align: center; border-top: 1px solid var(--border); }
+
   @media (max-width: 600px) {
+    .donut-wrap { flex-direction: column; align-items: stretch; gap: 1rem; padding: 1rem; }
+    .donut { margin: 0 auto; }
+    .donut-legend { min-width: 0; }
+    /* Últimos movimientos: cada fila pasa a ser una tarjeta compacta */
+    #recent-wrap thead { display: none; }
+    #recent-wrap tr {
+      display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center;
+      grid-template-areas: "site amount" "type date";
+      padding: 10px 1rem; border-bottom: 1px solid var(--border);
+    }
+    #recent-wrap tr:last-child { border-bottom: none; }
+    #recent-wrap td { padding: 0; border: none; }
+    #recent-wrap .recent-site { grid-area: site; }
+    #recent-wrap .recent-amount { grid-area: amount; text-align: right; }
+    #recent-wrap .recent-type { grid-area: type; }
+    #recent-wrap .recent-date { grid-area: date; text-align: right; }
+    #recent-wrap .tx-note { grid-column: 1 / -1; }
+    #recent-wrap .recent-nonote { display: none; }
     .header-right { text-align: left; }
     .summary { grid-template-columns: 1fr 1fr; }
     .summary .card:last-child { grid-column: span 2; }
@@ -503,6 +555,19 @@
       <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="c-pnl">$0.00</div><div class="mxn" id="c-pnl-mx"></div></div>
     </div>
 
+    <!-- Dona: % del valor en cripto por moneda -->
+    <div class="donut-wrap" id="donut-wrap" hidden>
+      <div class="donut" id="donut">
+        <svg id="donut-svg" viewBox="0 0 100 100" role="img" aria-label="Distribución del valor en cripto por moneda"></svg>
+        <div class="donut-center">
+          <div class="donut-label" id="donut-label">Total</div>
+          <div class="donut-value" id="donut-value"></div>
+          <div class="donut-sub" id="donut-sub"></div>
+        </div>
+      </div>
+      <ul class="donut-legend" id="donut-legend"></ul>
+    </div>
+
     <div class="tx-table-wrap" id="holdings-wrap"></div>
 
     <div class="add-tx-form">
@@ -529,6 +594,18 @@
       <input class="inp-waddr" type="text" id="w-addr" placeholder="Dirección pública" />
       <button class="btn-add-tx" onclick="addWallet()">+ Agregar</button>
     </div>
+    </div>
+  </div>
+
+  <!-- ---- ÚLTIMOS MOVIMIENTOS ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Últimos movimientos</div>
+      <div class="crypto-status"><span id="recent-count"></span></div>
+    </div>
+    <div class="tx-table-wrap" id="recent-wrap"></div>
+    <div class="recent-more" id="recent-more" hidden>
+      <button class="btn-refresh" onclick="showMoreRecent()">Ver más</button>
     </div>
   </div>
 
@@ -951,6 +1028,45 @@ function render() {
     document.getElementById('d-amt-' + site.id).addEventListener('keydown', e => { if (e.key === 'Enter') addTx(site.id); });
     document.getElementById('d-note-' + site.id).addEventListener('keydown', e => { if (e.key === 'Enter') addTx(site.id); });
   });
+  renderRecent();
+}
+
+// ---- ÚLTIMOS MOVIMIENTOS (todos los sitios juntos) ----
+const RECENT_STEP = 10;
+let recentShown = RECENT_STEP;
+
+function renderRecent() {
+  const all = state.sites
+    .flatMap(s => s.txs.map(t => ({ t, site: s.name })))
+    .sort((a, b) => b.t.date.localeCompare(a.t.date) || b.t.id - a.t.id); // misma fecha: el último cargado primero
+  const shown = all.slice(0, recentShown);
+  const wrap = document.getElementById('recent-wrap');
+  document.getElementById('recent-count').textContent = all.length ? shown.length + ' de ' + all.length : '';
+  document.getElementById('recent-more').hidden = shown.length >= all.length;
+
+  if (!all.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin movimientos todavía. Agrégalos en cada sitio.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Sitio</th><th>Tipo</th><th>Monto</th><th>Fecha</th><th>Nota</th></tr></thead>
+      <tbody>
+        ${shown.map(({ t, site }) => `
+          <tr>
+            <td class="recent-site">${escHtml(site)}</td>
+            <td class="recent-type"><span class="badge badge-${t.type}">${t.type === 'dep' ? 'Depósito' : 'Retiro'}</span></td>
+            <td class="recent-amount amount-${t.type}">${t.type === 'dep' ? '+' : '-'}${fmt(t.amount)}${usdHtml(t.amount)}</td>
+            <td class="recent-date">${t.date}</td>
+            <td class="tx-note${t.note ? '' : ' recent-nonote'}">${escHtml(t.note) || '—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function showMoreRecent() {
+  recentShown += RECENT_STEP;
+  renderRecent();
 }
 
 function escHtml(str) {
@@ -1079,7 +1195,113 @@ function renderCrypto() {
   document.getElementById('c-invested-mx').textContent = usdRef(invested);
   document.getElementById('c-value-mx').textContent = usdRef(value);
   document.getElementById('c-pnl-mx').textContent = usdRef(pnl, true);
+  renderDonut();
 }
+
+// ---- DONA: qué % del valor en cripto es cada moneda ----
+// Colores de la paleta categórica validada para fondo oscuro (máx. 6 segmentos;
+// el resto se agrupa en "Otras", en gris). El orden es fijo por moneda, no por
+// tamaño, para que cada moneda conserve su color cuando cambian los precios.
+const DONUT_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300'];
+const DONUT_OTHER = '#6b7083';
+const DONUT_MAX = 6;
+let donut = { slices: [], total: 0, active: null };
+
+function cryptoSlices() {
+  const coinIdx = id => { const i = COINS.findIndex(c => c.id === id); return i < 0 ? COINS.length : i; };
+  let rows = state.holdings
+    .map(h => ({ key: h.coin, value: prices[h.coin] != null ? h.amount * prices[h.coin] : h.usd })) // sin precio: lo invertido, como en los totales
+    .filter(r => r.value > 0);
+  let other = 0;
+  if (rows.length > DONUT_MAX) {
+    const keep = new Set([...rows].sort((a, b) => b.value - a.value).slice(0, DONUT_MAX - 1).map(r => r.key));
+    other = rows.filter(r => !keep.has(r.key)).reduce((a, r) => a + r.value, 0);
+    rows = rows.filter(r => keep.has(r.key));
+  }
+  const slices = rows
+    .sort((a, b) => coinIdx(a.key) - coinIdx(b.key))
+    .map((r, i) => {
+      const c = coinById(r.key) || { sym: r.key.toUpperCase(), name: r.key };
+      return { key: r.key, sym: c.sym, name: c.name, value: r.value, color: DONUT_COLORS[i] };
+    });
+  if (other > 0) slices.push({ key: 'otras', sym: 'Otras', name: '', value: other, color: DONUT_OTHER });
+  return slices;
+}
+
+function renderDonut() {
+  const wrap = document.getElementById('donut-wrap');
+  const slices = cryptoSlices();
+  const total = slices.reduce((a, s) => a + s.value, 0);
+  donut.slices = slices;
+  donut.total = total;
+  if (!slices.length || total <= 0) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  if (!slices.some(s => s.key === donut.active)) donut.active = null;
+
+  // Cada segmento es el mismo círculo con un trazo parcial; GAP deja ~2px de fondo entre segmentos
+  const R = 40, C = 2 * Math.PI * R, GAP = slices.length > 1 ? 1.4 : 0;
+  let start = 0;
+  document.getElementById('donut-svg').innerHTML = slices.map(s => {
+    const arc = s.value / total * C;
+    const len = Math.max(arc - GAP, 0.3);
+    const seg = `<circle class="donut-seg" data-key="${escHtml(s.key)}" cx="50" cy="50" r="${R}" stroke="${s.color}" stroke-width="12"
+      stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-(start + GAP / 2)}"></circle>`;
+    start += arc;
+    return seg;
+  }).join('');
+
+  document.getElementById('donut-legend').innerHTML = slices.map(s => `
+    <li data-key="${escHtml(s.key)}" tabindex="0">
+      <span class="legend-swatch" style="background:${s.color}"></span>
+      <span class="legend-name"><span class="coin-sym">${escHtml(s.sym)}</span>${s.name ? `<span class="coin-sub">${escHtml(s.name)}</span>` : ''}</span>
+      <span class="legend-pct">${(s.value / total * 100).toFixed(1)}%</span>
+      <span class="legend-val">${fmt(s.value)}</span>
+    </li>`).join('');
+
+  setDonutActive(donut.active);
+}
+
+// Ajusta el tamaño del número central para que entre en el hueco de la dona
+function fitDonutText(el, text, max) {
+  el.textContent = text;
+  el.style.fontSize = Math.min(max, 104 / (text.length * 0.6)) + 'px';
+}
+
+function setDonutActive(key) {
+  donut.active = key;
+  const s = donut.slices.find(x => x.key === key);
+  document.getElementById('donut').classList.toggle('has-active', !!s);
+  document.querySelectorAll('#donut-svg .donut-seg, #donut-legend li').forEach(el => el.classList.toggle('active', !!s && el.dataset.key === key));
+  const label = document.getElementById('donut-label');
+  const value = document.getElementById('donut-value');
+  const sub = document.getElementById('donut-sub');
+  if (s) {
+    label.textContent = s.sym;
+    fitDonutText(value, (s.value / donut.total * 100).toFixed(1) + '%', 18);
+    fitDonutText(sub, fmt(s.value), 11);
+  } else {
+    label.textContent = 'Total';
+    fitDonutText(value, fmt(donut.total), 16);
+    fitDonutText(sub, usdRef(donut.total), 11);
+  }
+}
+
+// Mouse: pasar por encima resalta. Celular: tocar resalta, tocar fuera vuelve al total.
+(function bindDonut() {
+  const keyOf = e => { const el = e.target.closest('[data-key]'); return el ? el.dataset.key : null; };
+  ['donut-svg', 'donut-legend'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && keyOf(e)) setDonutActive(keyOf(e)); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') setDonutActive(null); });
+    el.addEventListener('click', e => { const k = keyOf(e); if (k) setDonutActive(donut.active === k && e.pointerType !== 'mouse' ? null : k); });
+  });
+  const legend = document.getElementById('donut-legend');
+  legend.addEventListener('focusin', e => { const k = keyOf(e); if (k) setDonutActive(k); });
+  legend.addEventListener('focusout', () => setDonutActive(null));
+  document.addEventListener('pointerdown', e => {
+    if (donut.active && !e.target.closest('#donut-wrap')) setDonutActive(null);
+  });
+})();
 
 // =====================================================
 // ---- MONEDA DE VISUALIZACIÓN ----
