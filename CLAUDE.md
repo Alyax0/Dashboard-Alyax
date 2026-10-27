@@ -46,4 +46,4 @@ Deploys happen through Vercel's GitHub integration on pushes to `main` (remote: 
 
 **Display currency.** All amounts are stored in USD; the header selector (`setCurrency`, saved under `CURRENCY_KEY`) only changes display. Format money through `fmt` / `fmtUnit` (convert to the selected currency) and add the small USD reference with `usdHtml` / `usdTxt` / `usdRef` (empty when the currency is USD). The live-price ticker stays in USD and uses `fmtPrice`. Form inputs are still entered in USD.
 
-**Tabs.** Both the dashboard and the demo split the page into `#tab-finanzas` and `#tab-skins` panels, switched by `showTab()`; `#skins` in the URL opens the skins tab. The ticker sits outside both panels.
+**Tabs.** The dashboard splits the page into `#tab-finanzas`, `#tab-acciones` and `#tab-skins` panels (the demo has only Finanzas and Skins), switched by `showTab()` over the `TABS` list; `#acciones` / `#skins` in the URL open those tabs. The ticker sits outside the panels.

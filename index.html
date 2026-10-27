@@ -530,6 +530,7 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab active" id="tabbtn-finanzas" role="tab" onclick="showTab('finanzas')">Finanzas</button>
+    <button class="tab" id="tabbtn-acciones" role="tab" onclick="showTab('acciones')">Acciones</button>
     <button class="tab" id="tabbtn-skins" role="tab" onclick="showTab('skins')">Skins CS2</button>
   </nav>
 
@@ -592,46 +593,6 @@
     </div>
   </div>
 
-  <!-- ---- ACCIONES ---- -->
-  <div class="crypto-block">
-    <div class="crypto-head">
-      <div class="crypto-title"><span class="site-dot"></span>Acciones</div>
-      <div class="crypto-status">
-        <span id="stock-status">sin acciones</span>
-        <button class="btn-refresh" onclick="refreshStocks(true)" title="Actualizar precios">↻ actualizar</button>
-      </div>
-    </div>
-
-    <div class="crypto-totals">
-      <div><div class="ct-label">Invertido</div><div class="ct-value" id="st-invested">$0.00</div><div class="mxn" id="st-invested-mx"></div></div>
-      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="st-value">$0.00</div><div class="mxn" id="st-value-mx"></div></div>
-      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="st-pnl">$0.00</div><div class="mxn" id="st-pnl-mx"></div></div>
-    </div>
-
-    <!-- Dona: % del valor en acciones por ticker -->
-    <div class="donut-wrap" id="st-donut-wrap" hidden>
-      <div class="donut" id="st-donut">
-        <svg id="st-donut-svg" viewBox="0 0 100 100" role="img" aria-label="Distribución del valor en acciones por ticker"></svg>
-        <div class="donut-center">
-          <div class="donut-label" id="st-donut-label">Total</div>
-          <div class="donut-value" id="st-donut-value"></div>
-          <div class="donut-sub" id="st-donut-sub"></div>
-        </div>
-      </div>
-      <ul class="donut-legend" id="st-donut-legend"></ul>
-    </div>
-
-    <div class="tx-table-wrap" id="stocks-wrap"></div>
-
-    <div class="add-tx-form">
-      <input class="inp-ticker" type="text" id="st-symbol" list="stock-list" placeholder="Ticker o empresa (ej. AAPL, VOO)" autocomplete="off" spellcheck="false" />
-      <datalist id="stock-list"></datalist>
-      <input class="inp-sqty" type="number" id="st-qty" placeholder="Cant." min="0" step="any" />
-      <input class="inp-usd" type="number" id="st-price" placeholder="Precio compra USD" min="0" step="0.01" />
-      <button class="btn-add-tx" id="st-btn" onclick="addStock()">+ Agregar</button>
-    </div>
-  </div>
-
   <!-- ---- WALLETS ---- -->
   <div class="crypto-block">
     <div class="crypto-head clickable" id="wallets-head" onclick="toggleWallets()">
@@ -678,6 +639,52 @@
 
   </div>
   <!-- ===== /PESTAÑA FINANZAS ===== -->
+
+  <!-- ===== PESTAÑA ACCIONES ===== -->
+  <div class="tab-panel" id="tab-acciones" role="tabpanel" hidden>
+
+  <!-- ---- ACCIONES ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Acciones</div>
+      <div class="crypto-status">
+        <span id="stock-status">sin acciones</span>
+        <button class="btn-refresh" onclick="refreshStocks(true)" title="Actualizar precios">↻ actualizar</button>
+      </div>
+    </div>
+
+    <div class="crypto-totals">
+      <div><div class="ct-label">Invertido</div><div class="ct-value" id="st-invested">$0.00</div><div class="mxn" id="st-invested-mx"></div></div>
+      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="st-value">$0.00</div><div class="mxn" id="st-value-mx"></div></div>
+      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="st-pnl">$0.00</div><div class="mxn" id="st-pnl-mx"></div></div>
+    </div>
+
+    <!-- Dona: % del valor en acciones por ticker -->
+    <div class="donut-wrap" id="st-donut-wrap" hidden>
+      <div class="donut" id="st-donut">
+        <svg id="st-donut-svg" viewBox="0 0 100 100" role="img" aria-label="Distribución del valor en acciones por ticker"></svg>
+        <div class="donut-center">
+          <div class="donut-label" id="st-donut-label">Total</div>
+          <div class="donut-value" id="st-donut-value"></div>
+          <div class="donut-sub" id="st-donut-sub"></div>
+        </div>
+      </div>
+      <ul class="donut-legend" id="st-donut-legend"></ul>
+    </div>
+
+    <div class="tx-table-wrap" id="stocks-wrap"></div>
+
+    <div class="add-tx-form">
+      <input class="inp-ticker" type="text" id="st-symbol" list="stock-list" placeholder="Ticker o empresa (ej. AAPL, VOO)" autocomplete="off" spellcheck="false" />
+      <datalist id="stock-list"></datalist>
+      <input class="inp-sqty" type="number" id="st-qty" placeholder="Cant." min="0" step="any" />
+      <input class="inp-usd" type="number" id="st-price" placeholder="Precio compra USD" min="0" step="0.01" />
+      <button class="btn-add-tx" id="st-btn" onclick="addStock()">+ Agregar</button>
+    </div>
+  </div>
+
+  </div>
+  <!-- ===== /PESTAÑA ACCIONES ===== -->
 
   <!-- ===== PESTAÑA SKINS ===== -->
   <div class="tab-panel" id="tab-skins" role="tabpanel" hidden>
@@ -1992,8 +1999,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) refr
 const now = new Date();
 document.getElementById('today-label').textContent = now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-// Pestañas: Finanzas / Skins CS2 (#skins en la URL)
-const TABS = ['finanzas', 'skins'];
+// Pestañas: Finanzas / Acciones / Skins CS2 (#acciones o #skins en la URL)
+const TABS = ['finanzas', 'acciones', 'skins'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'finanzas';
   TABS.forEach(t => {
