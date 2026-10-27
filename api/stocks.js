@@ -105,10 +105,17 @@ module.exports = async (req, res) => {
     if (hit && Date.now() - hit.t < SEARCH_TTL) return res.status(200).json({ results: hit.results });
     try {
       const data = await finnhub('search', { q: key });
-      const results = (data.result || [])
+      // Finnhub a veces repite un ticker con otro nombre ("COSTCO WHOLESALE CORP" y
+      // "Costco Wholesale Corp"): queda uno solo, con el nombre que no está todo en mayúsculas
+      const bySymbol = new Map();
+      (data.result || [])
         .filter(r => TYPES.has(r.type) && isUsTicker(r.symbol))
-        .slice(0, 10)
-        .map(r => ({ symbol: r.symbol, name: r.description, type: r.type }));
+        .forEach(r => {
+          const seen = bySymbol.get(r.symbol);
+          if (!seen) bySymbol.set(r.symbol, { symbol: r.symbol, name: r.description, type: r.type });
+          else if (seen.name === seen.name.toUpperCase() && r.description !== r.description.toUpperCase()) seen.name = r.description;
+        });
+      const results = [...bySymbol.values()].slice(0, 10);
       searches.set(key, { t: Date.now(), results });
       return res.status(200).json({ results });
     } catch (e) {
