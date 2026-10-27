@@ -454,7 +454,12 @@
   }
   .donut-legend li:hover, .donut-legend li.active, .donut-legend li:focus-visible { background: rgba(255,255,255,0.04); }
   .legend-swatch { width: 10px; height: 10px; border-radius: 3px; }
+  .legend-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .legend-name .coin-sub { display: inline; margin-left: 4px; }
+
+  /* ---- ACCIONES ---- */
+  .inp-ticker { flex: 1; min-width: 180px; text-transform: uppercase; }
+  .inp-ticker::placeholder { text-transform: none; }
   .legend-pct { font-family: var(--mono); font-size: 12px; color: var(--text-muted); text-align: right; min-width: 48px; }
   .legend-val { font-family: var(--mono); font-size: 13px; text-align: right; }
 
@@ -587,6 +592,46 @@
     </div>
   </div>
 
+  <!-- ---- ACCIONES ---- -->
+  <div class="crypto-block">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Acciones</div>
+      <div class="crypto-status">
+        <span id="stock-status">sin acciones</span>
+        <button class="btn-refresh" onclick="refreshStocks(true)" title="Actualizar precios">↻ actualizar</button>
+      </div>
+    </div>
+
+    <div class="crypto-totals">
+      <div><div class="ct-label">Invertido</div><div class="ct-value" id="st-invested">$0.00</div><div class="mxn" id="st-invested-mx"></div></div>
+      <div><div class="ct-label">Valor actual</div><div class="ct-value" id="st-value">$0.00</div><div class="mxn" id="st-value-mx"></div></div>
+      <div><div class="ct-label">Ganancia / pérdida</div><div class="ct-value" id="st-pnl">$0.00</div><div class="mxn" id="st-pnl-mx"></div></div>
+    </div>
+
+    <!-- Dona: % del valor en acciones por ticker -->
+    <div class="donut-wrap" id="st-donut-wrap" hidden>
+      <div class="donut" id="st-donut">
+        <svg id="st-donut-svg" viewBox="0 0 100 100" role="img" aria-label="Distribución del valor en acciones por ticker"></svg>
+        <div class="donut-center">
+          <div class="donut-label" id="st-donut-label">Total</div>
+          <div class="donut-value" id="st-donut-value"></div>
+          <div class="donut-sub" id="st-donut-sub"></div>
+        </div>
+      </div>
+      <ul class="donut-legend" id="st-donut-legend"></ul>
+    </div>
+
+    <div class="tx-table-wrap" id="stocks-wrap"></div>
+
+    <div class="add-tx-form">
+      <input class="inp-ticker" type="text" id="st-symbol" list="stock-list" placeholder="Ticker o empresa (ej. AAPL, VOO)" autocomplete="off" spellcheck="false" />
+      <datalist id="stock-list"></datalist>
+      <input class="inp-sqty" type="number" id="st-qty" placeholder="Cant." min="0" step="any" />
+      <input class="inp-usd" type="number" id="st-price" placeholder="Precio compra USD" min="0" step="0.01" />
+      <button class="btn-add-tx" id="st-btn" onclick="addStock()">+ Agregar</button>
+    </div>
+  </div>
+
   <!-- ---- WALLETS ---- -->
   <div class="crypto-block">
     <div class="crypto-head clickable" id="wallets-head" onclick="toggleWallets()">
@@ -699,7 +744,7 @@ const COINS = [
 const coinById = id => COINS.find(c => c.id === id);
 
 // ---- STATE ----
-const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, skins: [], skinsOpen: true, nextSkinId: 1, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
+const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, skins: [], skinsOpen: true, stocks: [], nextStockId: 1, nextSkinId: 1, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
 let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
 
 // ---- LOAD STATE ----
@@ -719,6 +764,8 @@ function loadState() {
       state.skinsOpen = parsed.skinsOpen !== false;
       state.nextSkinId = parsed.nextSkinId || 1;
       state.nextWalletId = parsed.nextWalletId || 1;
+      state.stocks = parsed.stocks || [];
+      state.nextStockId = parsed.nextStockId || 1;
     }
   } catch(e) {
     console.warn('No se pudo cargar el estado guardado:', e);
@@ -742,7 +789,9 @@ function saveState() {
         skins: state.skins,
         skinsOpen: state.skinsOpen,
         nextSkinId: state.nextSkinId,
-        nextWalletId: state.nextWalletId
+        nextWalletId: state.nextWalletId,
+        stocks: state.stocks,
+        nextStockId: state.nextStockId
       }));
       showToast();
     } catch(e) {
@@ -1229,60 +1278,37 @@ function renderCrypto() {
 const DONUT_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300'];
 const DONUT_OTHER = '#6b7083';
 const DONUT_MAX = 6;
-let donut = { slices: [], total: 0, active: null };
+let cryptoDonut; // se crea abajo, cuando ya están definidas las funciones de la dona
 
-function cryptoSlices() {
-  const coinIdx = id => { const i = COINS.findIndex(c => c.id === id); return i < 0 ? COINS.length : i; };
-  let rows = state.holdings
-    .map(h => ({ key: h.coin, value: prices[h.coin] != null ? h.amount * prices[h.coin] : h.usd })) // sin precio: lo invertido, como en los totales
-    .filter(r => r.value > 0);
+// Agrupa en "Otras" lo que pase de DONUT_MAX segmentos (se quedan los más grandes)
+// y asigna colores por posición. rows llega en orden fijo por activo, así cada uno
+// conserva su color aunque cambien los precios.
+function foldSlices(rows) {
+  rows = rows.filter(r => r.value > 0);
   let other = 0;
   if (rows.length > DONUT_MAX) {
     const keep = new Set([...rows].sort((a, b) => b.value - a.value).slice(0, DONUT_MAX - 1).map(r => r.key));
     other = rows.filter(r => !keep.has(r.key)).reduce((a, r) => a + r.value, 0);
     rows = rows.filter(r => keep.has(r.key));
   }
-  const slices = rows
-    .sort((a, b) => coinIdx(a.key) - coinIdx(b.key))
-    .map((r, i) => {
-      const c = coinById(r.key) || { sym: r.key.toUpperCase(), name: r.key };
-      return { key: r.key, sym: c.sym, name: c.name, value: r.value, color: DONUT_COLORS[i] };
-    });
+  const slices = rows.map((r, i) => ({ ...r, color: DONUT_COLORS[i] }));
   if (other > 0) slices.push({ key: 'otras', sym: 'Otras', name: '', value: other, color: DONUT_OTHER });
   return slices;
 }
 
+function cryptoSlices() {
+  const coinIdx = id => { const i = COINS.findIndex(c => c.id === id); return i < 0 ? COINS.length : i; };
+  return foldSlices(state.holdings
+    .map(h => {
+      const c = coinById(h.coin) || { sym: h.coin.toUpperCase(), name: h.coin };
+      // sin precio: lo invertido, como en los totales
+      return { key: h.coin, sym: c.sym, name: c.name, value: prices[h.coin] != null ? h.amount * prices[h.coin] : h.usd };
+    })
+    .sort((a, b) => coinIdx(a.key) - coinIdx(b.key)));
+}
+
 function renderDonut() {
-  const wrap = document.getElementById('donut-wrap');
-  const slices = cryptoSlices();
-  const total = slices.reduce((a, s) => a + s.value, 0);
-  donut.slices = slices;
-  donut.total = total;
-  if (!slices.length || total <= 0) { wrap.hidden = true; return; }
-  wrap.hidden = false;
-  if (!slices.some(s => s.key === donut.active)) donut.active = null;
-
-  // Cada segmento es el mismo círculo con un trazo parcial; GAP deja ~2px de fondo entre segmentos
-  const R = 40, C = 2 * Math.PI * R, GAP = slices.length > 1 ? 1.4 : 0;
-  let start = 0;
-  document.getElementById('donut-svg').innerHTML = slices.map(s => {
-    const arc = s.value / total * C;
-    const len = Math.max(arc - GAP, 0.3);
-    const seg = `<circle class="donut-seg" data-key="${escHtml(s.key)}" cx="50" cy="50" r="${R}" stroke="${s.color}" stroke-width="12"
-      stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-(start + GAP / 2)}"></circle>`;
-    start += arc;
-    return seg;
-  }).join('');
-
-  document.getElementById('donut-legend').innerHTML = slices.map(s => `
-    <li data-key="${escHtml(s.key)}" tabindex="0">
-      <span class="legend-swatch" style="background:${s.color}"></span>
-      <span class="legend-name"><span class="coin-sym">${escHtml(s.sym)}</span>${s.name ? `<span class="coin-sub">${escHtml(s.name)}</span>` : ''}</span>
-      <span class="legend-pct">${(s.value / total * 100).toFixed(1)}%</span>
-      <span class="legend-val">${fmt(s.value)}</span>
-    </li>`).join('');
-
-  setDonutActive(donut.active);
+  cryptoDonut.render(cryptoSlices());
 }
 
 // Ajusta el tamaño del número central para que entre en el hueco de la dona
@@ -1291,41 +1317,78 @@ function fitDonutText(el, text, max) {
   el.style.fontSize = Math.min(max, 104 / (text.length * 0.6)) + 'px';
 }
 
-function setDonutActive(key) {
-  donut.active = key;
-  const s = donut.slices.find(x => x.key === key);
-  document.getElementById('donut').classList.toggle('has-active', !!s);
-  document.querySelectorAll('#donut-svg .donut-seg, #donut-legend li').forEach(el => el.classList.toggle('active', !!s && el.dataset.key === key));
-  const label = document.getElementById('donut-label');
-  const value = document.getElementById('donut-value');
-  const sub = document.getElementById('donut-sub');
-  if (s) {
-    label.textContent = s.sym;
-    fitDonutText(value, (s.value / donut.total * 100).toFixed(1) + '%', 18);
-    fitDonutText(sub, fmt(s.value), 11);
-  } else {
-    label.textContent = 'Total';
-    fitDonutText(value, fmt(donut.total), 16);
-    fitDonutText(sub, usdRef(donut.total), 11);
-  }
-}
+// Dona reutilizable (Cripto, Acciones). prefix es el prefijo de los ids de sus
+// elementos: '' -> #donut-wrap, #donut-svg…; 'st-' -> #st-donut-wrap…
+function createDonut(prefix) {
+  const $ = id => document.getElementById(prefix + id);
+  const d = { slices: [], total: 0, active: null };
 
-// Mouse: pasar por encima resalta. Celular: tocar resalta, tocar fuera vuelve al total.
-(function bindDonut() {
+  function setActive(key) {
+    d.active = key;
+    const s = d.slices.find(x => x.key === key);
+    $('donut').classList.toggle('has-active', !!s);
+    [...$('donut-svg').querySelectorAll('.donut-seg'), ...$('donut-legend').querySelectorAll('li')]
+      .forEach(el => el.classList.toggle('active', !!s && el.dataset.key === key));
+    if (s) {
+      $('donut-label').textContent = s.sym;
+      fitDonutText($('donut-value'), (s.value / d.total * 100).toFixed(1) + '%', 18);
+      fitDonutText($('donut-sub'), fmt(s.value), 11);
+    } else {
+      $('donut-label').textContent = 'Total';
+      fitDonutText($('donut-value'), fmt(d.total), 16);
+      fitDonutText($('donut-sub'), usdRef(d.total), 11);
+    }
+  }
+
+  function render(slices) {
+    const total = slices.reduce((a, s) => a + s.value, 0);
+    d.slices = slices;
+    d.total = total;
+    if (!slices.length || total <= 0) { $('donut-wrap').hidden = true; return; }
+    $('donut-wrap').hidden = false;
+    if (!slices.some(s => s.key === d.active)) d.active = null;
+
+    // Cada segmento es el mismo círculo con un trazo parcial; GAP deja ~2px de fondo entre segmentos
+    const R = 40, C = 2 * Math.PI * R, GAP = slices.length > 1 ? 1.4 : 0;
+    let start = 0;
+    $('donut-svg').innerHTML = slices.map(s => {
+      const arc = s.value / total * C;
+      const len = Math.max(arc - GAP, 0.3);
+      const seg = `<circle class="donut-seg" data-key="${escHtml(s.key)}" cx="50" cy="50" r="${R}" stroke="${s.color}" stroke-width="12"
+        stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-(start + GAP / 2)}"></circle>`;
+      start += arc;
+      return seg;
+    }).join('');
+
+    $('donut-legend').innerHTML = slices.map(s => `
+      <li data-key="${escHtml(s.key)}" tabindex="0">
+        <span class="legend-swatch" style="background:${s.color}"></span>
+        <span class="legend-name"><span class="coin-sym">${escHtml(s.sym)}</span>${s.name ? `<span class="coin-sub">${escHtml(s.name)}</span>` : ''}</span>
+        <span class="legend-pct">${(s.value / total * 100).toFixed(1)}%</span>
+        <span class="legend-val">${fmt(s.value)}</span>
+      </li>`).join('');
+
+    setActive(d.active);
+  }
+
+  // Mouse: pasar por encima resalta. Celular: tocar resalta, tocar fuera vuelve al total.
   const keyOf = e => { const el = e.target.closest('[data-key]'); return el ? el.dataset.key : null; };
   ['donut-svg', 'donut-legend'].forEach(id => {
-    const el = document.getElementById(id);
-    el.addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && keyOf(e)) setDonutActive(keyOf(e)); });
-    el.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') setDonutActive(null); });
-    el.addEventListener('click', e => { const k = keyOf(e); if (k) setDonutActive(donut.active === k && e.pointerType !== 'mouse' ? null : k); });
+    const el = $(id);
+    el.addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && keyOf(e)) setActive(keyOf(e)); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') setActive(null); });
+    el.addEventListener('click', e => { const k = keyOf(e); if (k) setActive(d.active === k && e.pointerType !== 'mouse' ? null : k); });
   });
-  const legend = document.getElementById('donut-legend');
-  legend.addEventListener('focusin', e => { const k = keyOf(e); if (k) setDonutActive(k); });
-  legend.addEventListener('focusout', () => setDonutActive(null));
+  $('donut-legend').addEventListener('focusin', e => { const k = keyOf(e); if (k) setActive(k); });
+  $('donut-legend').addEventListener('focusout', () => setActive(null));
   document.addEventListener('pointerdown', e => {
-    if (donut.active && !e.target.closest('#donut-wrap')) setDonutActive(null);
+    if (d.active && !e.target.closest('#' + prefix + 'donut-wrap')) setActive(null);
   });
-})();
+
+  return { render, setActive, state: d };
+}
+
+cryptoDonut = createDonut('');
 
 // =====================================================
 // ---- MONEDA DE VISUALIZACIÓN ----
@@ -1413,7 +1476,7 @@ async function refreshFx(force) {
   }
   fetchingRates = false;
   updateFxLabel();
-  if (currency !== 'USD') { render(); renderCrypto(); renderSkins(); }
+  if (currency !== 'USD') { render(); renderCrypto(); renderStocks(); renderSkins(); }
 }
 
 function setCurrency(c) {
@@ -1423,6 +1486,7 @@ function setCurrency(c) {
   updateFxLabel();
   render();
   renderCrypto();
+  renderStocks();
   renderSkins();
   if (c !== 'USD' && !(rates && rates[c])) refreshFx(true);
 }
@@ -1675,6 +1739,187 @@ setInterval(() => refreshSkins(), 300000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSkins(); });
 
 // =====================================================
+// ---- ACCIONES (precios de Finnhub vía /api/stocks) ----
+// =====================================================
+const STOCK_API = '/api/stocks';
+let stockQuotes = {}; // { AAPL: { price, change, changePct } } (solo en memoria)
+let stockNames = {};  // nombres vistos en el buscador { AAPL: 'Apple Inc' }
+const stockDonut = createDonut('st-');
+
+const fmtQty = n => n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+
+async function fetchStockQuotes(symbols) {
+  const res = await fetch(STOCK_API + '?symbols=' + encodeURIComponent(symbols.join(',')));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+  return data.quotes || {};
+}
+
+let refreshingStocks = false;
+async function refreshStocks(manual) {
+  if (refreshingStocks) return;
+  const symbols = [...new Set(state.stocks.map(s => s.symbol))];
+  const statusEl = document.getElementById('stock-status');
+  if (!symbols.length) { statusEl.textContent = 'sin acciones'; renderStocks(); return; }
+  refreshingStocks = true;
+  try {
+    Object.assign(stockQuotes, await fetchStockQuotes(symbols));
+    statusEl.textContent = 'actualizado ' + new Date().toLocaleTimeString('es-MX');
+  } catch(e) {
+    console.warn('Error al traer precios de acciones:', e);
+    statusEl.textContent = 'error al actualizar';
+    if (manual) showToast('No se pudieron traer los precios: ' + e.message, true);
+  }
+  refreshingStocks = false;
+  renderStocks();
+}
+
+// Nombre de la empresa para un ticker escrito a mano (sin elegir sugerencia)
+async function lookupStockName(symbol) {
+  try {
+    const res = await fetch(STOCK_API + '?q=' + encodeURIComponent(symbol));
+    const data = await res.json();
+    const hit = (data.results || []).find(r => r.symbol === symbol);
+    return hit ? hit.name : '';
+  } catch(e) {
+    return '';
+  }
+}
+
+async function addStock() {
+  const symEl = document.getElementById('st-symbol');
+  const qtyEl = document.getElementById('st-qty');
+  const priceEl = document.getElementById('st-price');
+  const symbol = symEl.value.trim().toUpperCase();
+  const qty = parseFloat(qtyEl.value);
+  const paid = parseFloat(priceEl.value);
+  if (!symbol || isNaN(qty) || qty <= 0) {
+    (!symbol ? symEl : qtyEl).style.borderColor = '#f05b6a';
+    setTimeout(() => { symEl.style.borderColor = ''; qtyEl.style.borderColor = ''; }, 1200);
+    return;
+  }
+  const btn = document.getElementById('st-btn');
+  btn.disabled = true;
+  try {
+    const q = (await fetchStockQuotes([symbol]))[symbol];
+    if (!q) { showToast('No encontré ese ticker, elige una de las sugerencias', true); return; }
+    stockQuotes[symbol] = q;
+    // Sin precio de compra: usa el precio actual
+    const each = (!isNaN(paid) && paid > 0) ? paid : q.price;
+    const cost = Math.round(each * qty * 100) / 100;
+    const name = stockNames[symbol] || await lookupStockName(symbol);
+    const h = state.stocks.find(x => x.symbol === symbol);
+    if (h) {
+      h.qty = Math.round((h.qty + qty) * 1e8) / 1e8;
+      h.cost = Math.round((h.cost + cost) * 100) / 100;
+      if (!h.name && name) h.name = name;
+    } else {
+      state.stocks.push({ id: state.nextStockId++, symbol, name, qty, cost, date: new Date().toISOString().slice(0, 10) });
+    }
+    symEl.value = ''; qtyEl.value = ''; priceEl.value = '';
+    document.getElementById('stock-status').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-MX');
+    renderStocks();
+    saveState();
+  } catch(e) {
+    console.warn('Error al agregar acción:', e);
+    showToast('No se pudo traer el precio: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function deleteStock(id) {
+  if (!confirm('¿Eliminar esta acción?')) return;
+  state.stocks = state.stocks.filter(s => s.id !== id);
+  renderStocks();
+  saveState();
+}
+
+// Ganancia/pérdida con flecha y % (mismo formato que Cripto)
+function chgHtml(diff, base) {
+  const pct = base ? (diff / base) * 100 : 0;
+  const cls = diff >= 0 ? 'chg-up' : 'chg-down';
+  return `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>${usdHtml(diff, true)}`;
+}
+
+function renderStocks() {
+  const wrap = document.getElementById('stocks-wrap');
+  let invested = 0, value = 0;
+
+  if (!state.stocks.length) {
+    wrap.innerHTML = '<div class="empty-msg">Sin acciones. Busca un ticker (ej. AAPL, VOO), pon cuántas acciones tienes y a qué precio las compraste.</div>';
+  } else {
+    const dash = '<span class="mono" style="color:var(--text-dim)">—</span>';
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Acción</th><th>Cant.</th><th>Invertido</th><th>Precio</th><th>Hoy</th><th>Valor actual</th><th>Ganancia</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${state.stocks.map(s => {
+            const q = stockQuotes[s.symbol];
+            const cur = q ? q.price * s.qty : null;
+            invested += s.cost;
+            value += cur != null ? cur : s.cost;
+            // Hoy: cambio del día de la posición (cambio por acción × cantidad)
+            const day = q ? chgHtml(q.change * s.qty, (q.price - q.change) * s.qty) : dash;
+            return `
+              <tr>
+                <td><div class="coin-sym">${escHtml(s.symbol)}</div><div class="coin-sub">${s.name ? escHtml(s.name) + ' · ' : ''}${s.date}</div></td>
+                <td class="mono">${fmtQty(s.qty)}</td>
+                <td class="mono">${fmt(s.cost)}${usdHtml(s.cost)}<div class="mxn">${fmt(s.cost / s.qty)} c/u</div></td>
+                <td class="mono">${q ? fmtUnit(q.price) + usdHtml(q.price) : '—'}</td>
+                <td>${day}</td>
+                <td class="mono">${cur != null ? fmt(cur) + usdHtml(cur) : '—'}</td>
+                <td>${cur != null ? chgHtml(cur - s.cost, s.cost) : dash}</td>
+                <td><button class="del-btn" onclick="deleteStock(${s.id})" title="Eliminar">✕</button></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const pnl = value - invested;
+  document.getElementById('st-invested').textContent = fmt(invested);
+  document.getElementById('st-value').textContent = fmt(value);
+  const pnlEl = document.getElementById('st-pnl');
+  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  document.getElementById('st-invested-mx').textContent = usdRef(invested);
+  document.getElementById('st-value-mx').textContent = usdRef(value);
+  document.getElementById('st-pnl-mx').textContent = usdRef(pnl, true);
+
+  // Dona: orden de compra fijo, así cada acción conserva su color
+  stockDonut.render(foldSlices(state.stocks.map(s => {
+    const q = stockQuotes[s.symbol];
+    return { key: s.symbol, sym: s.symbol, name: s.name || '', value: q ? q.price * s.qty : s.cost };
+  })));
+}
+
+// Sugerencias de tickers mientras escribes (por ticker o por nombre de empresa)
+let stockSearchTimer = null;
+document.getElementById('st-symbol').addEventListener('input', e => {
+  clearTimeout(stockSearchTimer);
+  const q = e.target.value.trim();
+  if (!q) return;
+  stockSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(STOCK_API + '?q=' + encodeURIComponent(q));
+      if (!res.ok) return;
+      const data = await res.json();
+      const results = data.results || [];
+      results.forEach(r => { stockNames[r.symbol] = r.name; });
+      document.getElementById('stock-list').innerHTML = results.map(r => `<option value="${escHtml(r.symbol)}">${escHtml(r.name)}</option>`).join('');
+    } catch(err) {}
+  }, 350);
+});
+['st-qty', 'st-price'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') addStock(); }));
+
+// El servidor guarda los precios 3 min: se actualiza cada 3 min y al volver a la pestaña
+setInterval(() => refreshStocks(), 180000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStocks(); });
+
+// =====================================================
 // ---- TICKER: precios en vivo de todas las monedas ----
 // =====================================================
 let ticker = {};      // { bitcoin: { usd, chg } }
@@ -1765,10 +2010,12 @@ window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
 updateFxLabel();
 render();
 renderCrypto();
+renderStocks();
 renderWallets();
 renderSkins();
 renderTicker();
 refreshPrices();
+refreshStocks();
 refreshSkins();
 </script>
 </body>
