@@ -925,8 +925,7 @@ async function addTx(siteId) {
   const coin = coinFromNote(note);
   if (coin) {
     try {
-      const got = await fetchPrices([coin.id]);
-      const price = got[coin.id];
+      const price = await getPrice(coin.id);
       if (!price) throw new Error('sin precio');
       prices[coin.id] = price;
       let msg;
@@ -1105,20 +1104,35 @@ async function refreshPrices(manual) {
   const ids = [...new Set(state.holdings.map(h => h.coin))];
   const statusEl = document.getElementById('price-status');
   refreshFx();
-  refreshTicker(!!manual);
-  if (!ids.length) { statusEl.textContent = 'sin monedas'; renderCrypto(); return; }
   refreshing = true;
-  try {
-    const got = await fetchPrices(ids);
-    Object.assign(prices, got);
-    statusEl.textContent = 'actualizado ' + new Date().toLocaleTimeString('es-MX');
-  } catch(e) {
-    console.warn('Error al traer precios:', e);
+  // Una sola consulta: el ticker ya trae el precio de todas las monedas
+  // (CoinGecko gratis limita las consultas por minuto).
+  const ok = await refreshTicker(!!manual);
+  ids.forEach(id => { if (ticker[id]) prices[id] = ticker[id].usd; });
+  refreshing = false;
+  if (!ids.length) statusEl.textContent = 'sin monedas';
+  else if (ok) statusEl.textContent = 'actualizado ' + new Date(tickerOkT).toLocaleTimeString('es-MX');
+  else {
     statusEl.textContent = 'error al actualizar precios';
     if (manual) showToast('No se pudieron traer los precios', true);
   }
-  refreshing = false;
   renderCrypto();
+}
+
+// Precio de una moneda para agregarla: usa el del ticker si es reciente y solo
+// consulta si no hay. Si CoinGecko falla (por ej. por límite de consultas),
+// usa el último precio conocido de hasta 15 min.
+async function getPrice(id) {
+  const age = Date.now() - tickerOkT;
+  if (ticker[id] && age < 2 * 60000) return ticker[id].usd;
+  try {
+    const got = await fetchPrices([id]);
+    if (got[id]) return got[id];
+  } catch(e) {
+    console.warn('No se pudo traer el precio de ' + id + ':', e);
+  }
+  if (ticker[id] && age < 15 * 60000) return ticker[id].usd;
+  return null;
 }
 
 async function addHolding() {
@@ -1133,8 +1147,7 @@ async function addHolding() {
   const btn = document.getElementById('h-btn');
   btn.disabled = true;
   try {
-    const got = await fetchPrices([coinId]);
-    const price = got[coinId];
+    const price = await getPrice(coinId);
     if (!price) throw new Error('sin precio');
     prices[coinId] = price;
     mergeInto(coinId, usd, price);
@@ -1665,12 +1678,15 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) refr
 // ---- TICKER: precios en vivo de todas las monedas ----
 // =====================================================
 let ticker = {};      // { bitcoin: { usd, chg } }
-let tickerT = 0;
+let tickerT = 0;      // último intento
+let tickerOkT = 0;    // última vez que se trajeron precios
 let tickerPrev = {};  // precio anterior para el destello
 
+// Devuelve true si hay precios recientes (de esta consulta o de una de hace poco)
 async function refreshTicker(force) {
-  if (!force && Date.now() - tickerT < 30000) return;
+  if (!force && Date.now() - tickerT < 30000) return Date.now() - tickerOkT < 2 * 60000;
   tickerT = Date.now();
+  let ok = false;
   const statusEl = document.getElementById('ticker-status');
   try {
     const url = PRICE_API + '?vs_currencies=usd&include_24hr_change=true&ids=' + COINS.map(c => c.id).join(',');
@@ -1683,13 +1699,16 @@ async function refreshTicker(force) {
       const d = data[c.id];
       if (d && typeof d.usd === 'number') ticker[c.id] = { usd: d.usd, chg: d.usd_24h_change };
     });
+    tickerOkT = Date.now();
+    ok = true;
     statusEl.textContent = new Date().toLocaleTimeString('es-MX');
   } catch(e) {
+    // Sin reintento rápido: si CoinGecko limitó las consultas, insistir lo empeora
     console.warn('Error al traer el ticker:', e);
     statusEl.textContent = 'sin conexión';
-    tickerT = Date.now() - 20000; // reintenta pronto
   }
   renderTicker();
+  return ok;
 }
 
 function renderTicker() {
