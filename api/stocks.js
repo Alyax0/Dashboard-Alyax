@@ -1,6 +1,8 @@
 // Vercel serverless function: precios de acciones y ETFs de EE. UU. desde Finnhub (USD).
 // Uso:  /api/stocks?q=apple            -> sugerencias de tickers
 //       /api/stocks?symbols=AAPL,VOO   -> precio actual y cambio del día
+//       /api/stocks?history=AAPL       -> cierres diarios del último mes (Yahoo, sin key)
+//       /api/stocks?history=bitcoin&kind=crypto -> lo mismo para cripto (CoinGecko, sin key)
 // Necesita la variable de entorno FINNHUB_API_KEY (key gratis en finnhub.io); nunca
 // va escrita en el código. El plan gratis permite 60 consultas/min, así que los
 // precios se guardan en memoria unos minutos y las búsquedas un día.
@@ -8,8 +10,10 @@
 const QUOTE_TTL = 3 * 60 * 1000;
 const SEARCH_TTL = 24 * 60 * 60 * 1000;
 const MAX_SYMBOLS = 30;
-const quotes = new Map();   // 'AAPL' -> { t, data }
-const searches = new Map(); // 'apple' -> { t, results }
+const HISTORY_TTL = 60 * 60 * 1000;
+const quotes = new Map();    // 'AAPL' -> { t, data }
+const searches = new Map();  // 'apple' -> { t, results }
+const histories = new Map(); // 's:AAPL' / 'c:bitcoin' -> { t, points }
 
 // Tickers aceptados al pedir precios: letras, números, punto o guion (ej. BRK.B)
 const isTicker = s => /^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(s);
@@ -18,6 +22,38 @@ const isTicker = s => /^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(s);
 const isUsTicker = s => /^[A-Z0-9]{1,6}(\.[ABC])?$/.test(s);
 // Tipos que interesan en el buscador (acciones y ETFs)
 const TYPES = new Set(['Common Stock', 'ETP', 'ETF', 'ADR', 'REIT']);
+// Ids de CoinGecko (ej. bitcoin, the-open-network)
+const isCoinId = s => /^[a-z0-9-]{1,40}$/.test(s);
+
+// Cierres diarios del último mes: [[timestamp ms, precio USD], ...]
+async function getHistory(id, crypto) {
+  const key = (crypto ? 'c:' : 's:') + id;
+  const hit = histories.get(key);
+  if (hit && Date.now() - hit.t < HISTORY_TTL) return hit.points;
+  try {
+    let points;
+    if (crypto) {
+      const r = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=30&interval=daily`);
+      if (!r.ok) throw new Error('CoinGecko respondió ' + r.status);
+      points = ((await r.json()).prices || []).filter(p => typeof p[1] === 'number');
+    } else {
+      // Yahoo usa guion en las clases de acciones (BRK.B -> BRK-B)
+      const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(id.replace('.', '-'))}?range=1mo&interval=1d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!r.ok) throw new Error('Yahoo respondió ' + r.status);
+      const result = (((await r.json()).chart || {}).result || [])[0] || {};
+      const ts = result.timestamp || [];
+      const close = (((result.indicators || {}).quote || [])[0] || {}).close || [];
+      points = ts.map((t, i) => [t * 1000, close[i]]).filter(p => typeof p[1] === 'number');
+    }
+    if (points.length < 2) throw new Error('Sin historial');
+    histories.set(key, { t: Date.now(), points });
+    return points;
+  } catch (e) {
+    if (hit) return hit.points; // si falla, usa el último guardado
+    throw e;
+  }
+}
 
 async function finnhub(path, params) {
   const url = 'https://finnhub.io/api/v1/' + path + '?' + new URLSearchParams(params);
@@ -42,6 +78,20 @@ async function getQuote(symbol) {
 }
 
 module.exports = async (req, res) => {
+  // El historial no usa Finnhub, así que no necesita la key
+  if (req.query.history) {
+    const crypto = req.query.kind === 'crypto';
+    const id = crypto ? String(req.query.history).toLowerCase() : String(req.query.history).toUpperCase();
+    if (!(crypto ? isCoinId(id) : isTicker(id))) return res.status(400).json({ error: 'Ticker inválido' });
+    try {
+      const points = await getHistory(id, crypto);
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3000');
+      return res.status(200).json({ points });
+    } catch (e) {
+      return res.status(502).json({ error: String(e.message || e) });
+    }
+  }
+
   if (!process.env.FINNHUB_API_KEY) {
     return res.status(500).json({ error: 'Falta configurar FINNHUB_API_KEY en Vercel' });
   }
