@@ -2,19 +2,23 @@
 // Uso:  /api/skins?q=ak redline          -> sugerencias de nombres
 //       /api/skins?names=Nombre1%0ANombre2 -> precios de esas skins (separadas por salto de línea,
 //                                          porque los nombres ya llevan '|')
-// Skinport cachea 5 min y limita a 8 requests / 5 min, así que se guarda en memoria.
+// Fuente: la API de Skinport. Skinport bloquea los servidores de Vercel (responde 406
+// "Client must support Brotli" aunque se mande Accept-Encoding: br), así que si falla se
+// usa la copia pública de sus precios que publica CSGO Trader (se actualiza cada hora).
+// Skinport limita a 8 requests / 5 min, así que los precios se guardan en memoria.
 
 const https = require('https');
 const zlib = require('zlib');
 
+const SKINPORT = 'https://api.skinport.com/v1/items?app_id=730&currency=USD';
+const MIRROR = 'https://prices.csgotrader.app/latest/skinport.json';
 const TTL = 5 * 60 * 1000;
-let cache = { t: 0, items: null };
+let cache = { t: 0, items: null, source: null };
 
-// Skinport exige Accept-Encoding: br (si no, responde 406). Se usa https en vez de
-// fetch porque el fetch del entorno de Vercel no respeta ese encabezado.
-function getSkinport(url) {
+// GET que acepta respuestas en Brotli o gzip
+function getJson(url) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'Accept-Encoding': 'br', 'Accept': 'application/json', 'User-Agent': 'dashboard-alyax' } }, res => {
+    const req = https.get(url, { headers: { 'Accept-Encoding': 'br, gzip', 'Accept': 'application/json', 'User-Agent': 'dashboard-alyax' } }, res => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
@@ -25,27 +29,36 @@ function getSkinport(url) {
           else if (enc === 'gzip') body = zlib.gunzipSync(body);
         } catch (e) { /* si no se puede descomprimir, se muestra tal cual */ }
         const text = body.toString('utf8');
-        if (res.statusCode !== 200) return reject(new Error('Skinport respondió ' + res.statusCode + ': ' + text.slice(0, 120)));
-        try { resolve(JSON.parse(text)); } catch (e) { reject(new Error('Skinport devolvió algo que no es JSON')); }
+        const host = new URL(url).host;
+        if (res.statusCode !== 200) return reject(new Error(host + ' respondió ' + res.statusCode + ': ' + text.slice(0, 120)));
+        try { resolve(JSON.parse(text)); } catch (e) { reject(new Error(host + ' devolvió algo que no es JSON')); }
       });
     });
     req.on('error', reject);
-    req.setTimeout(20000, () => req.destroy(new Error('Skinport tardó demasiado')));
+    req.setTimeout(20000, () => req.destroy(new Error(new URL(url).host + ' tardó demasiado')));
   });
 }
 
 async function loadItems() {
   if (cache.items && Date.now() - cache.t < TTL) return cache.items;
-  const data = await getSkinport('https://api.skinport.com/v1/items?app_id=730&currency=USD');
   const items = {};
-  for (const i of data) {
-    items[i.market_hash_name.toLowerCase()] = {
-      name: i.market_hash_name,
-      min: i.min_price,
-      sug: i.suggested_price
-    };
+  let source;
+  try {
+    // Skinport: [{ market_hash_name, min_price, suggested_price }]
+    for (const i of await getJson(SKINPORT)) {
+      items[i.market_hash_name.toLowerCase()] = { name: i.market_hash_name, min: i.min_price, sug: i.suggested_price };
+    }
+    source = 'skinport';
+  } catch (e) {
+    // Copia de CSGO Trader: { 'AK-47 | Redline (Field-Tested)': { starting_at, suggested_price } }
+    const data = await getJson(MIRROR);
+    for (const name of Object.keys(data)) {
+      const p = data[name] || {};
+      items[name.toLowerCase()] = { name, min: p.starting_at ?? null, sug: p.suggested_price ?? null };
+    }
+    source = 'csgotrader';
   }
-  cache = { t: Date.now(), items };
+  cache = { t: Date.now(), items, source };
   return items;
 }
 
