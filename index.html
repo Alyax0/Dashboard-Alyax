@@ -808,7 +808,7 @@
         <input class="inp-sname" type="text" id="s-name" list="skin-list" placeholder="Skin (ej. AK-47 | Redline (Field-Tested))" autocomplete="off" />
         <datalist id="skin-list"></datalist>
         <input class="inp-sqty" type="number" id="s-qty" placeholder="Cant." min="1" step="1" value="1" />
-        <input class="inp-usd" type="number" id="s-price" placeholder="Precio c/u USD" min="0" step="0.01" />
+        <input class="inp-usd" type="number" id="s-price" placeholder="Precio c/u USD" min="0" step="0.01" title="Vacío: usa el precio actual · 0: te salió gratis en un drop" />
         <button class="btn-add-tx" id="s-btn" onclick="addSkin()">+ Agregar</button>
       </div>
     </div>
@@ -1792,8 +1792,16 @@ async function addSkin() {
     const p = Object.values(got)[0];
     if (!p) { showToast('No encontré esa skin, elige una de las sugerencias', true); btn.disabled = false; return; }
     Object.assign(skinPrices, got);
-    const each = (!isNaN(paid) && paid > 0) ? paid : skinPrice(p);
-    if (!each) { showToast('Esa skin no tiene precio, ponlo tú', true); btn.disabled = false; return; }
+    // Vacío: usa el precio actual. 0: drop gratis (costo $0).
+    const blank = priceEl.value.trim() === '';
+    if (!blank && (isNaN(paid) || paid < 0)) {
+      priceEl.style.borderColor = '#f05b6a';
+      setTimeout(() => { priceEl.style.borderColor = ''; }, 1200);
+      btn.disabled = false;
+      return;
+    }
+    const each = blank ? skinPrice(p) : paid;
+    if (blank && !each) { showToast('Esa skin no tiene precio, ponlo tú', true); btn.disabled = false; return; }
     const cost = Math.round(each * qty * 100) / 100;
     const h = state.skins.find(x => x.name === p.name);
     if (h) { h.qty += qty; h.cost = Math.round((h.cost + cost) * 100) / 100; }
@@ -1822,7 +1830,7 @@ function renderSkins() {
   let invested = 0, value = 0;
 
   if (!state.skins.length) {
-    wrap.innerHTML = '<div class="empty-msg">Sin skins. Busca una por nombre, pon la cantidad y lo que pagaste (si lo dejas vacío usa el precio actual).</div>';
+    wrap.innerHTML = '<div class="empty-msg">Sin skins. Busca una por nombre, pon la cantidad y lo que pagaste (si lo dejas vacío usa el precio actual; pon 0 si te salió en un drop).</div>';
   } else {
     wrap.innerHTML = `
       <table>
@@ -1837,15 +1845,16 @@ function renderSkins() {
             invested += h.cost;
             value += cur != null ? cur : h.cost;
             let chg = '<span class="mono" style="color:var(--text-dim)">—</span>';
+            const drop = h.cost === 0; // salió gratis (drop): no hay % de ganancia sobre $0
             if (cur != null) {
               const diff = cur - h.cost;
               const pct = h.cost ? (diff / h.cost) * 100 : 0;
               const cls = diff >= 0 ? 'chg-up' : 'chg-down';
-              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${diff >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%</div>${usdHtml(diff, true)}`;
+              chg = `<div class="${cls}">${diff >= 0 ? '+' : '-'}${fmt(diff)}</div><div class="${cls} chg-sub">${drop ? 'drop' : (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct).toFixed(2) + '%'}</div>${usdHtml(diff, true)}`;
             }
             return `
               <tr>
-                <td><div class="skin-name">${escHtml(h.name)}</div><div class="coin-sub">desde ${h.date}</div></td>
+                <td><div class="skin-name">${escHtml(h.name)}</div><div class="coin-sub">${drop ? 'drop · ' : ''}desde ${h.date}</div></td>
                 <td class="mono">x${h.qty}</td>
                 <td class="mono">${fmt(h.cost)}${usdHtml(h.cost)}<div class="mxn">${fmt(h.cost / h.qty)} c/u</div></td>
                 <td class="mono">${unit != null ? fmt(unit) + usdHtml(unit) : '—'}</td>
