@@ -639,8 +639,8 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab active" id="tabbtn-finanzas" role="tab" onclick="showTab('finanzas')">Finanzas</button>
-    <button class="tab" id="tabbtn-acciones" role="tab" onclick="showTab('acciones')">Acciones</button>
     <button class="tab" id="tabbtn-skins" role="tab" onclick="showTab('skins')">Skins CS2</button>
+    <button class="tab" id="tabbtn-acciones" role="tab" onclick="showTab('acciones')">Acciones</button>
     <button class="tab" id="tabbtn-explorar" role="tab" onclick="showTab('explorar')">Explorar activos</button>
   </nav>
 
@@ -1754,7 +1754,7 @@ async function copyAddr(id) {
 }
 
 // =====================================================
-// ---- SKINS CS2 (precios de Skinport vía /api/skins) ----
+// ---- SKINS CS2 (precios de CSFloat vía /api/skins) ----
 // =====================================================
 const SKIN_API = '/api/skins';
 let skinPrices = {}; // { 'AK-47 | Redline (Field-Tested)': {name,min,sug} }
@@ -1791,7 +1791,7 @@ async function refreshSkins(manual) {
   refreshingSkins = true;
   try {
     Object.assign(skinPrices, await fetchSkinPrices(names));
-    statusEl.textContent = 'Skinport · ' + new Date().toLocaleTimeString('es-MX');
+    statusEl.textContent = 'CSFloat · ' + new Date().toLocaleTimeString('es-MX');
   } catch(e) {
     console.warn('Error al traer precios de skins:', e);
     statusEl.textContent = 'error al actualizar skins';
@@ -1923,7 +1923,7 @@ document.getElementById('s-name').addEventListener('input', e => {
   }, 350);
 });
 
-// Skinport cachea 5 min: se actualiza cada 5 min y al volver a la pestaña
+// El servidor guarda los precios 5 min: se actualiza cada 5 min y al volver a la pestaña
 setInterval(() => refreshSkins(), 300000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSkins(); });
 
@@ -2418,8 +2418,8 @@ async function refreshTicker(force) {
 const STABLES = new Set(['tether', 'usd-coin']);
 function renderTicker() {
   const list = document.getElementById('ticker-list');
-  // Las stablecoins valen siempre ~$1: van al final para que se vean primero las que se mueven
-  list.innerHTML = [...COINS].sort((a, b) => STABLES.has(a.id) - STABLES.has(b.id)).map(c => {
+  // Las stablecoins valen siempre ~$1: no se muestran (su precio se sigue pidiendo para Cripto)
+  list.innerHTML = COINS.filter(c => !STABLES.has(c.id)).map(c => {
     const t = ticker[c.id];
     if (!t) return `<div class="t-row"><div><div class="coin-sym">${c.sym}</div><div class="coin-sub">${c.name}</div></div><div class="t-right mono" style="color:var(--text-dim)">—</div></div>`;
     const prev = tickerPrev[c.id];
@@ -2454,7 +2454,7 @@ const now = new Date();
 document.getElementById('today-label').textContent = now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
 // Pestañas: Finanzas / Acciones / Skins CS2 / Explorar activos (#acciones, #skins o #explorar en la URL)
-const TABS = ['finanzas', 'acciones', 'skins', 'explorar'];
+const TABS = ['finanzas', 'skins', 'acciones', 'explorar'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'finanzas';
   TABS.forEach(t => {
