@@ -18,8 +18,8 @@
     --border: rgba(255,255,255,0.07);
     --border-hover: rgba(255,255,255,0.14);
     --text: #e8eaf0;
-    --text-muted: #7a7f94;
-    --text-dim: #4a4f62;
+    --text-muted: #a3a8ba;  /* 6.7–8.1:1 sobre los fondos */
+    --text-dim: #858a9f;    /* 4.6–5.6:1 sobre los fondos */
     --green: #2eca8c;
     --green-dim: rgba(46,202,140,0.12);
     --red: #f05b6a;
@@ -46,7 +46,8 @@
   /* ---- HEADER ---- */
   header {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
+    gap: 12px;
     justify-content: space-between;
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
@@ -55,6 +56,9 @@
   .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
   .logo span { color: var(--accent); }
   .date-label { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+  .header-right { display: flex; align-items: center; gap: 14px; text-align: right; }
+  .header-dates #fx-label:not(:empty) { margin-top: 2px; }
+  .header-right .currency-select { margin-bottom: 0; }
 
   /* ---- TABS ---- */
   .tabs {
@@ -105,6 +109,7 @@
   .card-value.green { color: var(--green); }
   .card-value.red { color: var(--red); }
   .card-value.neutral { color: var(--text); }
+  .card-value.zero, .ct-value.zero { color: var(--text-muted); }
   .card-sub { font-size: 11px; color: var(--text-dim); margin-top: 6px; font-family: var(--mono); }
 
   /* ---- CRYPTO ---- */
@@ -202,6 +207,9 @@
     gap: 10px;
     margin-bottom: 1.5rem;
   }
+  .sites-card { margin-bottom: 1rem; }
+  .sites-card .add-site-row { margin: 0; padding: 0.85rem 1rem; background: var(--surface2); }
+  .sites-card .add-site-row input { background: var(--surface); }
   .add-site-row input {
     flex: 1;
     background: var(--surface);
@@ -325,11 +333,13 @@
 
   .empty-msg {
     text-align: center;
-    color: var(--text-dim);
-    font-size: 13px;
-    padding: 1.5rem;
-    font-style: italic;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 1.25rem;
   }
+  .empty-msg b { display: block; color: var(--text); font-size: 13.5px; font-weight: 500; margin-bottom: 2px; }
+  .crypto-totals[hidden] { display: none; }
 
   /* ---- ADD TX FORM ---- */
   .add-tx-form {
@@ -497,7 +507,7 @@
     .donut-wrap { flex-direction: column; align-items: stretch; gap: 1rem; padding: 1rem; }
     .donut { margin: 0 auto; }
     .donut-legend { min-width: 0; }
-    .header-right { text-align: left; }
+    .header-right { text-align: left; width: 100%; justify-content: space-between; }
     .summary { grid-template-columns: 1fr 1fr; }
     .summary .card:last-child { grid-column: span 2; }
     header { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -619,9 +629,11 @@
   <header>
     <div class="logo">Dashboard<span> </span>Alyax</div>
     <div class="header-right">
+      <div class="header-dates">
+        <div class="date-label" id="today-label"></div>
+        <div class="date-label" id="fx-label"></div>
+      </div>
       <select class="currency-select" id="currency-select" aria-label="Moneda" title="Moneda en la que se muestran los montos"></select>
-      <div class="date-label" id="today-label"></div>
-      <div class="date-label" id="fx-label" style="margin-top:4px"></div>
     </div>
   </header>
 
@@ -711,9 +723,16 @@
     </div>
   </div>
 
-  <div class="add-site-row">
-    <input id="new-site-input" placeholder="Nombre del sitio (Binance, Bet365, PayPal…)" />
-    <button class="btn-primary" onclick="addSite()">+ Agregar sitio</button>
+  <!-- ---- SITIOS ---- -->
+  <div class="crypto-block sites-card">
+    <div class="crypto-head">
+      <div class="crypto-title"><span class="site-dot"></span>Sitios</div>
+      <div class="crypto-status"><span id="sites-count"></span></div>
+    </div>
+    <div class="add-site-row">
+      <input id="new-site-input" placeholder="Nombre del sitio (Binance, PayPal, Mercado Pago…)" />
+      <button class="btn-primary" onclick="addSite()">+ Agregar sitio</button>
+    </div>
   </div>
 
   <div id="sites-container"></div>
@@ -1058,6 +1077,8 @@ mergeHoldings();
 const fmt = n => { const c = CURRENCIES[shownCur()]; return c.sym + Math.abs(toCur(n)).toLocaleString('es-MX', { minimumFractionDigits: c.dec, maximumFractionDigits: c.dec }); };
 // Precio unitario en la moneda elegida (más decimales si es menor a 1)
 const fmtUnit = n => { const c = CURRENCIES[shownCur()], v = toCur(n); return c.sym + v.toLocaleString('es-MX', { minimumFractionDigits: c.dec, maximumFractionDigits: v < 1 ? 6 : c.dec }); };
+// Monto con signo; en cero va sin "+" ni "-"
+const fmtSigned = n => (Math.abs(n) < 0.005 ? '' : n > 0 ? '+' : '-') + fmt(n);
 const fmtCoin = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
 const fmtPrice = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
 
@@ -1071,14 +1092,20 @@ function updateSummary() {
   const ret = rets.reduce((a, t) => a + t.amount, 0);
   const net = ret - dep;
 
-  document.getElementById('sum-dep').textContent = fmt(dep);
+  // En cero no se colorea: el rojo/verde sugeriría una pérdida o ganancia que no hay
+  const depEl = document.getElementById('sum-dep');
+  depEl.textContent = fmt(dep);
+  depEl.className = 'card-value ' + (dep > 0.004 ? 'red' : 'zero');
   document.getElementById('sum-dep-count').textContent = deps.length + ' movimiento' + (deps.length !== 1 ? 's' : '') + usdTxt(dep);
-  document.getElementById('sum-ret').textContent = fmt(ret);
+  const retEl = document.getElementById('sum-ret');
+  retEl.textContent = fmt(ret);
+  retEl.className = 'card-value ' + (ret > 0.004 ? 'green' : 'zero');
   document.getElementById('sum-ret-count').textContent = rets.length + ' movimiento' + (rets.length !== 1 ? 's' : '') + usdTxt(ret);
 
   const netEl = document.getElementById('sum-net');
-  netEl.textContent = (net >= 0 ? '+' : '-') + fmt(net);
-  netEl.className = 'card-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : 'neutral');
+  netEl.textContent = fmtSigned(net);
+  netEl.className = 'card-value ' + (net > 0.004 ? 'green' : net < -0.004 ? 'red' : 'zero');
+  document.getElementById('sites-count').textContent = state.sites.length + ' sitio' + (state.sites.length !== 1 ? 's' : '');
   document.getElementById('sum-sites-count').textContent = state.sites.length + ' sitio' + (state.sites.length !== 1 ? 's' : '') + usdTxt(net, true);
 }
 
@@ -1255,7 +1282,7 @@ function renderRecent() {
   document.getElementById('recent-more').hidden = shown.length >= all.length;
 
   if (!all.length) {
-    wrap.innerHTML = '<div class="empty-msg">Sin movimientos todavía. Agrégalos en cada sitio.</div>';
+    wrap.innerHTML = '<div class="empty-msg"><b>Sin movimientos todavía</b>Aparecen aquí cuando los agregues en tus sitios.</div>';
     return;
   }
   wrap.innerHTML = `
@@ -1374,7 +1401,7 @@ function renderCrypto() {
   let invested = 0, value = 0;
 
   if (!state.holdings.length) {
-    wrap.innerHTML = '<div class="empty-msg">Sin monedas. Agrega cuántos USD tienes en una cripto y se calcula la cantidad.</div>';
+    wrap.innerHTML = '<div class="empty-msg"><b>Agrega tu primera moneda</b>Elige una cripto abajo y cuántos USD tienes; la cantidad se calcula sola.</div>';
   } else {
     wrap.innerHTML = `
       <table>
@@ -1411,11 +1438,12 @@ function renderCrypto() {
   }
 
   const pnl = value - invested;
+  document.getElementById('c-invested').closest('.crypto-totals').hidden = !state.holdings.length;
   document.getElementById('c-invested').textContent = fmt(invested);
   document.getElementById('c-value').textContent = fmt(value);
   const pnlEl = document.getElementById('c-pnl');
-  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
-  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  pnlEl.textContent = fmtSigned(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : 'zero');
   document.getElementById('c-invested-mx').textContent = usdRef(invested);
   document.getElementById('c-value-mx').textContent = usdRef(value);
   document.getElementById('c-pnl-mx').textContent = usdRef(pnl, true);
@@ -1662,7 +1690,7 @@ function renderWallets() {
   const wrap = document.getElementById('wallets-wrap');
   document.getElementById('wallets-count').textContent = state.wallets.length + ' wallet' + (state.wallets.length !== 1 ? 's' : '');
   if (!state.wallets.length) {
-    wrap.innerHTML = '<div class="empty-msg">Sin wallets. Guarda aquí tus direcciones públicas.</div>';
+    wrap.innerHTML = '<div class="empty-msg"><b>Sin wallets guardadas</b>Guarda aquí tus direcciones públicas para copiarlas rápido.</div>';
     return;
   }
   wrap.innerHTML = `
@@ -1830,7 +1858,7 @@ function renderSkins() {
   let invested = 0, value = 0;
 
   if (!state.skins.length) {
-    wrap.innerHTML = '<div class="empty-msg">Sin skins. Busca una por nombre, pon la cantidad y lo que pagaste (si lo dejas vacío usa el precio actual; pon 0 si te salió en un drop).</div>';
+    wrap.innerHTML = '<div class="empty-msg"><b>Agrega tu primera skin</b>Búscala por nombre, pon la cantidad y lo que pagaste (vacío usa el precio actual; 0 si te salió en un drop).</div>';
   } else {
     wrap.innerHTML = `
       <table>
@@ -1868,11 +1896,12 @@ function renderSkins() {
   }
 
   const pnl = value - invested;
+  document.getElementById('s-invested').closest('.crypto-totals').hidden = !state.skins.length;
   document.getElementById('s-invested').textContent = fmt(invested);
   document.getElementById('s-value').textContent = fmt(value);
   const pnlEl = document.getElementById('s-pnl');
-  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
-  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  pnlEl.textContent = fmtSigned(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : 'zero');
   document.getElementById('s-invested-mx').textContent = usdRef(invested);
   document.getElementById('s-value-mx').textContent = usdRef(value);
   document.getElementById('s-pnl-mx').textContent = usdRef(pnl, true);
@@ -2007,7 +2036,7 @@ function renderStocks() {
   let invested = 0, value = 0;
 
   if (!state.stocks.length) {
-    wrap.innerHTML = '<div class="empty-msg">Sin acciones. Busca un ticker (ej. AAPL, VOO), pon cuántas acciones tienes y a qué precio las compraste.</div>';
+    wrap.innerHTML = '<div class="empty-msg"><b>Agrega tu primera acción</b>Busca un ticker abajo (ej. AAPL, VOO), cuántas tienes y a qué precio las compraste.</div>';
   } else {
     const dash = '<span class="mono" style="color:var(--text-dim)">—</span>';
     wrap.innerHTML = `
@@ -2040,11 +2069,12 @@ function renderStocks() {
   }
 
   const pnl = value - invested;
+  document.getElementById('st-invested').closest('.crypto-totals').hidden = !state.stocks.length;
   document.getElementById('st-invested').textContent = fmt(invested);
   document.getElementById('st-value').textContent = fmt(value);
   const pnlEl = document.getElementById('st-pnl');
-  pnlEl.textContent = (pnl >= 0 ? '+' : '-') + fmt(pnl);
-  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : '');
+  pnlEl.textContent = fmtSigned(pnl);
+  pnlEl.className = 'ct-value ' + (pnl > 0.004 ? 'up' : pnl < -0.004 ? 'down' : 'zero');
   document.getElementById('st-invested-mx').textContent = usdRef(invested);
   document.getElementById('st-value-mx').textContent = usdRef(value);
   document.getElementById('st-pnl-mx').textContent = usdRef(pnl, true);
@@ -2385,9 +2415,11 @@ async function refreshTicker(force) {
   return ok;
 }
 
+const STABLES = new Set(['tether', 'usd-coin']);
 function renderTicker() {
   const list = document.getElementById('ticker-list');
-  list.innerHTML = COINS.map(c => {
+  // Las stablecoins valen siempre ~$1: van al final para que se vean primero las que se mueven
+  list.innerHTML = [...COINS].sort((a, b) => STABLES.has(a.id) - STABLES.has(b.id)).map(c => {
     const t = ticker[c.id];
     if (!t) return `<div class="t-row"><div><div class="coin-sym">${c.sym}</div><div class="coin-sub">${c.name}</div></div><div class="t-right mono" style="color:var(--text-dim)">—</div></div>`;
     const prev = tickerPrev[c.id];
