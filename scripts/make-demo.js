@@ -28,8 +28,12 @@ rep(`const STORAGE_KEY = 'alyax_dashboard_v1';`, `// Distinta a la del dashboard
 rep(`const RATES_KEY = 'alyax_rates';`, `const RATES_KEY = 'finanzas_demo_rates';`);
 rep(`const CURRENCY_KEY = 'alyax_currency';`, `const CURRENCY_KEY = 'finanzas_demo_currency';`);
 
+// Sin seguimiento en vivo de wallets: las direcciones de ejemplo son inventadas
+rep(`const CHAIN_LIVE = true;`, `const CHAIN_LIVE = false;`);
+
 // Ejemplos sin plataformas de gambling
 rep(`roobet ltc`, `binance btc`, 'all');
+rep(`placeholder="Sitio (ej. Roobet)"`, `placeholder="Sitio (ej. Binance)"`);
 
 // Aviso de demo con el botón "Reiniciar demo", visible en todas las pestañas
 rep(`<div class="page">\n\n`, `<div class="page">
@@ -158,7 +162,7 @@ rep(`    console.warn('No se pudo cargar el estado guardado:', e);\n  }`,
 const left = s.match(/alyax|roobet|bet365/gi);
 if (left) throw new Error('quedaron referencias: ' + [...new Set(left)].join(', '));
 fs.writeFileSync(dst, s.replace(/\n/g, '\r\n'));
-for (const f of ['api/skins.js', 'api/stocks.js', 'activos.js']) {
+for (const f of ['api/skins.js', 'api/stocks.js', 'api/chain.js', 'activos.js']) {
   fs.copyFileSync(path.join(root, f), path.join(root, 'demo', f));
 }
 console.log('demo/ actualizada desde index.html');
