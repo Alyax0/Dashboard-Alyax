@@ -522,6 +522,27 @@
   /* Tarjetas estilo GBM: esquinas redondeadas y sombra suave (sin sombra en oscuro) */
   .card, .crypto-block, .ticker { box-shadow: var(--shadow); }
 
+  /* ---- WALLETS EN VIVO ---- */
+  .w-group td { background: var(--surface2); font-size: 12.5px; }
+  .w-meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-muted); margin-left: 6px; }
+  .w-status { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .w-status.ok { color: var(--green); }
+  .w-status.err { color: var(--red); }
+  .w-status .live-dot { width: 6px; height: 6px; }
+  .badge-pend { background: var(--accent-dim); color: var(--accent); }
+  .peers { padding: 0.85rem 1rem; background: var(--accent-dim); border-bottom: 1px solid var(--border); }
+  .peers[hidden] { display: none; }
+  .peers-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .peers-title span { font-weight: 400; color: var(--text-muted); }
+  .peer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+  .peer-info { flex: 1; min-width: 220px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .peer-meta { width: 100%; font-size: 11.5px; color: var(--text-muted); }
+  .peer-site {
+    width: 170px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: var(--font); font-size: 13px; padding: 7px 10px; outline: none;
+  }
+  .peer-site:focus { border-color: var(--accent); }
+
   /* ---- BARRA SUPERIOR (estilo GBM) ---- */
   .topbar { position: sticky; top: 0; z-index: 40; background: var(--surface); border-bottom: 1px solid var(--border); }
   .topbar-inner {
@@ -730,9 +751,9 @@
     <div class="site-body open" id="wallets-body">
     <div class="tx-table-wrap" id="wallets-wrap"></div>
     <div class="add-tx-form">
-      <input class="inp-wname" type="text" id="w-name" placeholder="Nombre (ej. Metamask)" />
+      <input class="inp-wname" type="text" id="w-name" placeholder="Nombre (ej. Exodus)" />
       <select class="inp-coin" id="w-coin"></select>
-      <input class="inp-waddr" type="text" id="w-addr" placeholder="Dirección pública" />
+      <input class="inp-waddr" type="text" id="w-addr" placeholder="Dirección pública de recibir" />
       <button class="btn-add-tx" onclick="addWallet()">+ Agregar</button>
     </div>
     </div>
@@ -763,6 +784,8 @@
       <div class="crypto-title"><span class="site-dot"></span>Movimientos</div>
       <div class="crypto-status"><span id="recent-count"></span></div>
     </div>
+    <!-- Direcciones nuevas de las wallets: elegir a qué sitio pertenecen -->
+    <div class="peers" id="chain-peers" hidden></div>
     <div class="add-tx-form mov-form">
       <input class="inp-date" type="date" id="mov-date" />
       <select class="inp-type" id="mov-type">
@@ -939,7 +962,7 @@ const COINS = [
 const coinById = id => COINS.find(c => c.id === id);
 
 // ---- STATE ----
-const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, skins: [], skinsOpen: true, stocks: [], nextStockId: 1, nextSkinId: 1, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
+const state = { sites: [], holdings: [], wallets: [], walletsOpen: true, skins: [], skinsOpen: true, stocks: [], nextStockId: 1, chain: { txs: {}, peers: {}, bal: {}, cursor: {}, syncedAt: {} }, nextSkinId: 1, nextSiteId: 1, nextTxId: 1, nextHoldId: 1, nextWalletId: 1 };
 let prices = {}; // { bitcoin: 65000, ... } (solo en memoria)
 
 // ---- LOAD STATE ----
@@ -961,6 +984,7 @@ function loadState() {
       state.nextWalletId = parsed.nextWalletId || 1;
       state.stocks = parsed.stocks || [];
       state.nextStockId = parsed.nextStockId || 1;
+      state.chain = { ...state.chain, ...(parsed.chain || {}) };
     }
   } catch(e) {
     console.warn('No se pudo cargar el estado guardado:', e);
@@ -969,7 +993,10 @@ function loadState() {
 
 // ---- SAVE STATE ----
 let saveTimer = null;
-function saveState() {
+let saveLoud = false;
+// silent: guarda sin el aviso "✓ guardado" (las wallets en vivo guardan cada pocos segundos)
+function saveState(silent) {
+  if (!silent) saveLoud = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
@@ -986,9 +1013,11 @@ function saveState() {
         nextSkinId: state.nextSkinId,
         nextWalletId: state.nextWalletId,
         stocks: state.stocks,
-        nextStockId: state.nextStockId
+        nextStockId: state.nextStockId,
+        chain: state.chain
       }));
-      showToast();
+      if (saveLoud) showToast();
+      saveLoud = false;
     } catch(e) {
       console.warn('No se pudo guardar el estado:', e);
     }
@@ -1169,6 +1198,10 @@ async function addTx() {
 
   // Automatización: retiro con una cripto en la nota (ej. "ltc") -> se suma a Cripto
   const coin = coinFromNote(note);
+  if (coin && walletCoins().has(coin.id)) { // su saldo ya sale de la wallet
+    setTimeout(() => showToast(coin.sym + ' se actualiza solo desde tu wallet'), 450);
+    return;
+  }
   if (coin) {
     try {
       const price = await getPrice(coin.id);
@@ -1241,7 +1274,7 @@ function renderRecent() {
         ${shown.map(({ t, siteId, site }) => `
           <tr>
             <td class="recent-date">${t.date}</td>
-            <td class="recent-type"><span class="badge badge-${t.type}">${t.type === 'dep' ? 'Depósito' : 'Retiro'}</span></td>
+            <td class="recent-type"><span class="badge badge-${t.type}">${t.type === 'dep' ? 'Depósito' : 'Retiro'}</span>${t.pending ? ' <span class="badge badge-pend">pendiente</span>' : ''}</td>
             <td class="recent-amount amount-${t.type}">${t.type === 'dep' ? '+' : '-'}${fmt(t.amount)}${usdHtml(t.amount)}</td>
             <td class="mov-note">${site ? `<span class="mov-site">${escHtml(site)}</span>` : ''}${escHtml(t.note) || (site ? '' : '—')}</td>
             <td class="mov-del"><button class="del-btn" onclick="deleteTx(${siteId},${t.id})" title="Eliminar">✕</button></td>
@@ -1313,6 +1346,7 @@ async function getPrice(id) {
 
 async function addHolding() {
   const coinId = document.getElementById('h-coin').value;
+  if (walletCoins().has(coinId)) { showToast(symOf(coinId) + ' se actualiza solo desde tu wallet', true); return; }
   const usdInp = document.getElementById('h-usd');
   const usd = parseFloat(usdInp.value);
   if (isNaN(usd) || usd <= 0) {
@@ -1373,7 +1407,7 @@ function renderCrypto() {
             }
             return `
               <tr>
-                <td><div class="coin-sym">${escHtml(c.sym)}</div><div class="coin-sub">${escHtml(c.name)} · ${h.date}</div></td>
+                <td><div class="coin-sym">${escHtml(c.sym)}</div><div class="coin-sub">${escHtml(c.name)} · ${h.synced ? 'wallet en vivo' : h.date}</div></td>
                 <td class="mono">${fmtCoin(h.amount)} ${escHtml(c.sym)}</td>
                 <td class="mono">${fmt(h.usd)}${usdHtml(h.usd)}</td>
                 <td class="mono">${p != null ? fmtUnit(p) + usdHtml(p) : '—'}</td>
@@ -1670,28 +1704,60 @@ function toggleWallets() {
   saveState();
 }
 
+function walletStatus(cfg) {
+  if (!cfg) return '<span class="w-status">sin seguimiento</span>';
+  const st = chainRun.status[cfg.net] || {};
+  if (st.st === 'error') return `<span class="w-status err" title="${escHtml(st.msg)}">⚠ ${escHtml(st.msg.slice(0, 70))}</span>`;
+  if (st.st === 'sync') return '<span class="w-status">sincronizando…</span>';
+  if (st.st === 'live') return '<span class="w-status ok"><span class="live-dot"></span>en vivo</span>';
+  if (st.st === 'poll') return `<span class="w-status ok"><span class="live-dot"></span>cada ${cfg.every / 1000} s</span>`;
+  return '';
+}
+
+// Varias direcciones de la misma moneda se muestran juntas y se suman como una sola wallet
 function renderWallets() {
   applyWalletsOpen();
   const wrap = document.getElementById('wallets-wrap');
-  document.getElementById('wallets-count').textContent = state.wallets.length + ' wallet' + (state.wallets.length !== 1 ? 's' : '');
-  if (!state.wallets.length) {
-    wrap.innerHTML = '<div class="empty-msg"><b>Sin wallets guardadas</b>Guarda aquí tus direcciones públicas para copiarlas rápido.</div>';
+  const n = state.wallets.length;
+  document.getElementById('wallets-count').textContent = n + (n !== 1 ? ' direcciones' : ' dirección');
+  if (!n) {
+    wrap.innerHTML = '<div class="empty-msg"><b>Sin wallets guardadas</b>Agrega las direcciones públicas de recibir de tu wallet (ej. Exodus). Varias de la misma moneda se suman.</div>';
     return;
+  }
+  const groups = [];
+  for (const w of state.wallets) {
+    let g = groups.find(x => x.coin === w.coin);
+    if (!g) groups.push(g = { coin: w.coin, items: [] });
+    g.items.push(w);
   }
   wrap.innerHTML = `
     <table>
-      <thead><tr><th>Nombre</th><th>Moneda</th><th>Dirección</th><th></th><th></th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Dirección</th><th>Saldo</th><th></th><th></th></tr></thead>
       <tbody>
-        ${state.wallets.map(w => {
-          const short = w.address.length > 22 ? w.address.slice(0, 10) + '…' + w.address.slice(-8) : w.address;
+        ${groups.map(g => {
+          const cfg = NETS[g.coin];
+          const totals = {};
+          if (cfg) g.items.forEach(w => Object.entries(state.chain.bal[addrKey(cfg.net, w.address)] || {})
+            .forEach(([c, v]) => { totals[c] = (totals[c] || 0) + v; }));
+          const sum = Object.entries(totals).filter(([c, v]) => v > 0 || c === cfg.coin).map(([c, v]) => {
+            const p = isStable(c) ? 1 : ticker[c] && ticker[c].usd;
+            return `${fmtCoin(v)} ${symOf(c)}${p ? ' ≈ ' + fmt(v * p) : ''}`;
+          }).join(' · ');
           return `
-            <tr>
-              <td class="coin-sym">${escHtml(w.name)}</td>
-              <td class="mono">${escHtml(w.coin)}</td>
-              <td class="addr" title="${escHtml(w.address)}">${escHtml(short)}</td>
-              <td><button class="btn-refresh" onclick="copyAddr(${w.id})">copiar</button></td>
-              <td><button class="del-btn" onclick="deleteWallet(${w.id})" title="Eliminar">✕</button></td>
-            </tr>`;
+            <tr class="w-group"><td colspan="5"><span class="coin-sym">${escHtml(g.coin)}</span>
+              <span class="w-meta">${g.items.length} ${g.items.length !== 1 ? 'direcciones' : 'dirección'}${sum ? ' · ' + sum : ''}</span>
+              ${CHAIN_LIVE ? walletStatus(cfg) : ''}</td></tr>` + g.items.map(w => {
+            const short = w.address.length > 22 ? w.address.slice(0, 10) + '…' + w.address.slice(-8) : w.address;
+            const bal = cfg && state.chain.bal[addrKey(cfg.net, w.address)];
+            return `
+              <tr>
+                <td class="coin-sym">${escHtml(w.name)}</td>
+                <td class="addr" title="${escHtml(w.address)}">${escHtml(short)}</td>
+                <td class="mono">${bal ? fmtCoin(bal[cfg.coin] || 0) + ' ' + escHtml(g.coin) : '—'}</td>
+                <td><button class="btn-refresh" onclick="copyAddr(${w.id})">copiar</button></td>
+                <td><button class="del-btn" onclick="deleteWallet(${w.id})" title="Eliminar">✕</button></td>
+              </tr>`;
+          }).join('');
         }).join('')}
       </tbody>
     </table>`;
@@ -1703,23 +1769,41 @@ function addWallet() {
   const name = nameEl.value.trim();
   const address = addrEl.value.trim();
   const coin = document.getElementById('w-coin').value;
-  if (!name || !address) {
-    (!name ? nameEl : addrEl).style.borderColor = '#f05b6a';
-    setTimeout(() => { nameEl.style.borderColor = ''; addrEl.style.borderColor = ''; }, 1200);
+  const flag = el => { el.style.borderColor = '#f05b6a'; setTimeout(() => { el.style.borderColor = ''; }, 1200); };
+  if (!name || !address) { flag(!name ? nameEl : addrEl); return; }
+  // Nunca claves privadas ni frase semilla: solo la dirección pública de recibir
+  if (/\s/.test(address) || /^(0x)?[0-9a-fA-F]{64}$/.test(address) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(address) || /^[1-9A-HJ-NP-Za-km-z]{86,90}$/.test(address)) {
+    addrEl.value = '';
+    showToast('Eso parece una clave privada o frase semilla. Nunca la pegues: solo la dirección pública de recibir.', true);
     return;
+  }
+  const cfg = NETS[coin];
+  if (cfg && !cfg.re.test(address)) { flag(addrEl); showToast('Esa no parece una dirección de ' + coin, true); return; }
+  if (state.wallets.some(w => w.coin === coin && normAddr(cfg && cfg.net, w.address) === normAddr(cfg && cfg.net, address))) {
+    flag(addrEl); showToast('Esa dirección ya está guardada', true); return;
   }
   state.wallets.push({ id: state.nextWalletId++, name, coin, address });
   nameEl.value = '';
   addrEl.value = '';
   renderWallets();
   saveState();
+  startChain();
 }
 
 function deleteWallet(id) {
   if (!confirm('¿Eliminar esta wallet?')) return;
-  state.wallets = state.wallets.filter(w => w.id !== id);
+  const w = state.wallets.find(x => x.id === id);
+  state.wallets = state.wallets.filter(x => x.id !== id);
+  const cfg = w && NETS[w.coin];
+  if (cfg && !walletAddrs(cfg.net).includes(normAddr(cfg.net, w.address))) delete state.chain.bal[addrKey(cfg.net, w.address)];
+  // Las monedas que ya no salen de ninguna wallet vuelven a ser posiciones normales
+  const still = walletCoins();
+  state.holdings.forEach(h => { if (h.synced && !still.has(h.coin)) delete h.synced; });
+  syncHoldings();
   renderWallets();
+  renderCrypto();
   saveState();
+  startChain();
 }
 
 async function copyAddr(id) {
@@ -1737,6 +1821,422 @@ async function copyAddr(id) {
   }
   showToast('✓ dirección copiada');
 }
+
+// =====================================================
+// ---- WALLETS EN VIVO (solo direcciones públicas, nunca claves) ----
+// BTC y LTC: WebSocket de mempool.space / litecoinspace.org avisa y su API trae los datos.
+// SOL: WebSocket accountSubscribe del RPC público de PublicNode (el RPC oficial de Solana
+//      bloquea esta conexión con 403).
+// ETH (cada 20 s) y TRX con USDT/USDC TRC20 (cada 15 s): /api/chain, que guarda las keys.
+// Saliente = depósito en un sitio; entrante = retiro de un sitio. Cada dirección nueva de
+// origen o destino se asigna una vez a un sitio (o se ignora si es tuya) y se recuerda.
+// =====================================================
+const CHAIN_LIVE = true; // la demo lo apaga: sus direcciones son inventadas
+const IGNORE = '__ignorar';
+const NETS = {
+  BTC: { net: 'btc', coin: 'bitcoin', api: 'https://mempool.space/api', ws: 'wss://mempool.space/api/v1/ws',
+         re: /^(bc1[02-9ac-hj-np-z]{11,71}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/ },
+  LTC: { net: 'ltc', coin: 'litecoin', api: 'https://litecoinspace.org/api', ws: 'wss://litecoinspace.org/api/v1/ws',
+         re: /^(ltc1[02-9ac-hj-np-z]{11,71}|[LM3][1-9A-HJ-NP-Za-km-z]{26,33})$/ },
+  SOL: { net: 'sol', coin: 'solana', rpc: 'https://solana-rpc.publicnode.com', ws: 'wss://solana-rpc.publicnode.com',
+         re: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/ },
+  ETH: { net: 'eth', coin: 'ethereum', every: 20000, re: /^0x[0-9a-fA-F]{40}$/ },
+  TRX: { net: 'trx', coin: 'tron', every: 15000, re: /^T[1-9A-HJ-NP-Za-km-z]{33}$/ },
+};
+const chainRun = { gen: 0, sockets: [], timers: [], busy: {}, again: {}, status: {}, debounce: {} };
+const dayPrices = {}; // coin -> promesa de { 'YYYY-MM-DD': precio }
+
+const normAddr = (net, a) => (a && net === 'eth' ? a.toLowerCase() : a);
+const addrKey = (net, a) => net + ':' + normAddr(net, a);
+const shortAddr = a => (a && a.length > 14 ? a.slice(0, 6) + '…' + a.slice(-4) : a || '');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const r2 = n => Math.round(n * 100) / 100;
+const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
+const symOf = coin => (coinById(coin) || { sym: coin.toUpperCase() }).sym;
+const isStable = coin => coin === 'tether' || coin === 'usd-coin';
+const peerKey = r => r.net + ':' + (r.peer || '?');
+
+function walletAddrs(net) {
+  return [...new Set(state.wallets.filter(w => NETS[w.coin] && NETS[w.coin].net === net).map(w => normAddr(net, w.address)))];
+}
+// Monedas cuyo saldo en Cripto sale de una wallet
+function walletCoins() {
+  const out = new Set();
+  for (const w of state.wallets) {
+    const cfg = NETS[w.coin];
+    if (!cfg) continue;
+    out.add(cfg.coin);
+    const b = state.chain.bal[addrKey(cfg.net, w.address)] || {};
+    Object.keys(b).forEach(c => { if (b[c] > 0) out.add(c); });
+  }
+  return out;
+}
+
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
+  const d = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((d && d.error) || 'HTTP ' + r.status);
+  return d;
+}
+async function solRpc(method, params) {
+  const d = await getJSON(NETS.SOL.rpc, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+  if (d.error) throw new Error('Solana: ' + d.error.message);
+  return d.result;
+}
+function setBalance(net, address, balances) {
+  state.chain.bal[addrKey(net, address)] = balances;
+}
+
+// ---- BTC / LTC: neto de mis direcciones en cada transacción ----
+function esploraRec(cfg, t, mine) {
+  let got = 0, spent = 0;
+  const fromOthers = [], toOthers = [];
+  for (const v of t.vin) {
+    const a = v.prevout && v.prevout.scriptpubkey_address;
+    if (!a) continue;
+    if (mine.has(a)) spent += v.prevout.value; else fromOthers.push(a);
+  }
+  for (const v of t.vout) {
+    const a = v.scriptpubkey_address;
+    if (!a) continue;
+    if (mine.has(a)) got += v.value; else toOthers.push([a, v.value]);
+  }
+  const delta = got - spent;
+  // Todo entre mis direcciones: transferencia propia
+  const dir = spent && !toOthers.length ? 'self' : delta > 0 ? 'in' : 'out';
+  const peer = dir === 'in' ? fromOthers[0] || null : dir === 'out' ? toOthers.sort((a, b) => b[1] - a[1])[0][0] : null;
+  return { net: cfg.net, coin: cfg.coin, txid: t.txid, time: (t.status.block_time || Date.now() / 1000) * 1000,
+           dir, amount: Math.abs(delta) / 1e8, peer, pending: !t.status.confirmed };
+}
+async function syncEsplora(cfg, address) {
+  const mine = new Set(walletAddrs(cfg.net));
+  let page = await getJSON(`${cfg.api}/address/${address}/txs`);
+  const all = [...page];
+  // Hacia atrás de a 25 confirmadas, hasta llegar a algo ya conocido (máximo 8 páginas)
+  for (let i = 0; i < 8; i++) {
+    const conf = page.filter(t => t.status.confirmed);
+    const oldest = conf[conf.length - 1];
+    if (conf.length < 25 || !oldest || state.chain.txs[cfg.net + ':' + oldest.txid]) break;
+    page = await getJSON(`${cfg.api}/address/${address}/txs/chain/${oldest.txid}`);
+    all.push(...page);
+  }
+  const info = await getJSON(`${cfg.api}/address/${address}`);
+  const c = info.chain_stats, m = info.mempool_stats;
+  setBalance(cfg.net, address, { [cfg.coin]: (c.funded_txo_sum - c.spent_txo_sum + m.funded_txo_sum - m.spent_txo_sum) / 1e8 });
+  return all.map(t => esploraRec(cfg, t, mine));
+}
+
+// ---- SOL: transferencias del System Program (o cambio de saldo si es otro programa) ----
+function solRec(address, sig, tx) {
+  if (!tx || !tx.meta || tx.meta.err) return null;
+  const keys = tx.transaction.message.accountKeys.map(k => k.pubkey || k);
+  const ixs = [...tx.transaction.message.instructions, ...(tx.meta.innerInstructions || []).flatMap(i => i.instructions)];
+  let sent = 0, got = 0, peerOut = null, peerIn = null;
+  for (const ix of ixs) {
+    const p = ix.parsed;
+    if (ix.program !== 'system' || !p || !/^transfer/.test(p.type)) continue;
+    const { source, destination, lamports } = p.info;
+    if (source === address && destination !== address) { sent += lamports; peerOut = peerOut || destination; }
+    if (destination === address && source !== address) { got += lamports; peerIn = peerIn || source; }
+  }
+  let delta = got - sent, peer = delta >= 0 ? peerIn : peerOut;
+  if (!got && !sent) { // swap u otro programa: cambio neto de saldo sin la comisión
+    const i = keys.indexOf(address);
+    if (i < 0) return null;
+    delta = tx.meta.postBalances[i] - tx.meta.preBalances[i] + (i === 0 ? tx.meta.fee : 0);
+    peer = null;
+  }
+  if (Math.abs(delta) < 1000) return null; // menos de 0.000001 SOL: ruido
+  return { net: 'sol', coin: 'solana', txid: sig.signature, time: (sig.blockTime || tx.blockTime || Date.now() / 1000) * 1000,
+           dir: delta > 0 ? 'in' : 'out', amount: Math.abs(delta) / 1e9, peer, pending: false };
+}
+async function syncSol(cfg, address) {
+  const ck = addrKey('sol', address);
+  const until = state.chain.cursor[ck];
+  const sigs = [];
+  let before;
+  for (let i = 0; i < (until ? 6 : 2); i++) { // la primera vez, las últimas 100
+    const opts = { limit: 50, commitment: 'confirmed' };
+    if (before) opts.before = before;
+    if (until) opts.until = until;
+    const page = await solRpc('getSignaturesForAddress', [address, opts]);
+    sigs.push(...page);
+    if (page.length < 50) break;
+    before = page[page.length - 1].signature;
+  }
+  const recs = [];
+  for (const sig of sigs.slice().reverse()) { // de la más vieja a la más nueva
+    if (sig.err || state.chain.txs['sol:' + sig.signature]) continue;
+    const tx = await solRpc('getTransaction', [sig.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }]);
+    recs.push(solRec(address, sig, tx));
+    await sleep(150); // el RPC público limita las consultas por segundo
+  }
+  if (sigs.length) state.chain.cursor[ck] = sigs[0].signature;
+  const bal = await solRpc('getBalance', [address, { commitment: 'confirmed' }]);
+  setBalance('sol', address, { solana: bal.value / 1e9 });
+  return recs;
+}
+
+// ---- ETH y TRX: /api/chain (keys en Vercel) ----
+async function syncApi(cfg, address) {
+  const ck = addrKey(cfg.net, address);
+  const from = cfg.net === 'eth' ? 'start' : 'since';
+  const d = await getJSON(`/api/chain?net=${cfg.net}&address=${encodeURIComponent(address)}&${from}=${state.chain.cursor[ck] || 0}`);
+  const mine = new Set(walletAddrs(cfg.net));
+  const recs = d.txs.map(t => {
+    const fromMine = mine.has(normAddr(cfg.net, t.from)), toMine = mine.has(normAddr(cfg.net, t.to));
+    return { net: cfg.net, coin: t.coin, txid: t.txid, idx: t.idx, time: t.time, amount: t.amount, pending: false,
+             dir: fromMine && toMine ? 'self' : fromMine ? 'out' : 'in', peer: normAddr(cfg.net, fromMine ? t.to : t.from) };
+  });
+  // eth: último bloque visto; trx: último timestamp. Se vuelve a pedir desde ahí y los repetidos se descartan.
+  state.chain.cursor[ck] = d.last;
+  setBalance(cfg.net, address, d.balances);
+  return recs;
+}
+const SYNCERS = { btc: syncEsplora, ltc: syncEsplora, sol: syncSol, eth: syncApi, trx: syncApi };
+
+// ---- Guardar sin duplicados, valuar, asignar a un sitio y actualizar Cripto ----
+async function usdValue(r) {
+  if (isStable(r.coin)) return r2(r.amount);
+  let price = null;
+  if (Date.now() - r.time > 36 * 3600e3) { // las viejas, al precio de ese día
+    try {
+      if (!dayPrices[r.coin]) dayPrices[r.coin] = getJSON('/api/chain?prices=' + r.coin).then(d => d.prices);
+      price = (await dayPrices[r.coin])[dayOf(r.time)] || null;
+    } catch (e) { dayPrices[r.coin] = null; }
+  }
+  if (!price) price = (ticker[r.coin] && ticker[r.coin].usd) || prices[r.coin] || await getPrice(r.coin);
+  return r2(r.amount * (price || 0));
+}
+
+function findOrCreateSite(name) {
+  let s = state.sites.find(x => !x.general && x.name.toLowerCase() === name.toLowerCase());
+  if (!s) { s = { id: state.nextSiteId++, name, open: true, txs: [] }; state.sites.push(s); }
+  return s;
+}
+function assignTx(r) {
+  const site = state.chain.peers[peerKey(r)];
+  if (site === undefined) { r.waiting = true; return; } // queda en "Direcciones nuevas"
+  r.waiting = false;
+  if (site === IGNORE) return;
+  const s = findOrCreateSite(site);
+  const mov = { id: state.nextTxId++, date: dayOf(r.time), type: r.dir === 'out' ? 'dep' : 'ret', amount: r.usd || 0,
+                note: `${symOf(r.coin)} ${fmtCoin(r.amount)} · ${r.peer ? shortAddr(r.peer) : 'sin dirección'}`, chain: r.key };
+  if (r.pending) mov.pending = true;
+  s.txs.push(mov);
+  s.txs.sort((a, b) => b.date.localeCompare(a.date));
+  r.movId = mov.id;
+  r.siteId = s.id;
+}
+function confirmMovement(r) {
+  const s = state.sites.find(x => x.id === r.siteId);
+  const m = s && s.txs.find(t => t.id === r.movId);
+  if (m) delete m.pending;
+}
+// Costo en Cripto para movimientos nuevos (el historial previo no lo toca)
+function adjustBasis(r) {
+  const h = state.holdings.find(x => x.coin === r.coin && x.synced);
+  if (!h) return;
+  if (r.dir === 'in') h.usd = r2(h.usd + (r.usd || 0));
+  else if (h.amount > 0) h.usd = r2(h.usd * Math.max(0, 1 - r.amount / h.amount));
+}
+// Cantidad en Cripto = suma de los saldos de las wallets de esa moneda
+function syncHoldings() {
+  const totals = {};
+  for (const w of state.wallets) {
+    const cfg = NETS[w.coin];
+    const b = cfg && state.chain.bal[addrKey(cfg.net, w.address)];
+    if (b) Object.entries(b).forEach(([c, v]) => { totals[c] = (totals[c] || 0) + v; });
+  }
+  for (const [coin, amt] of Object.entries(totals)) {
+    let h = state.holdings.find(x => x.coin === coin);
+    if (!h && amt <= 0) continue;
+    const price = isStable(coin) ? 1 : (ticker[coin] && ticker[coin].usd) || prices[coin] || 0;
+    if (!h) {
+      h = { id: state.nextHoldId++, coin, usd: r2(amt * price), amount: amt, date: dayOf(Date.now()), synced: true };
+      state.holdings.push(h);
+    } else if (!h.synced) { // una posición cargada a mano pasa a seguir la wallet, con su precio promedio
+      h.synced = true;
+      h.usd = r2(amt * (h.entryPrice || price));
+    }
+    if (amt <= 0) { state.holdings = state.holdings.filter(x => x !== h); continue; }
+    h.amount = amt;
+    h.entryPrice = h.usd / h.amount;
+  }
+}
+function notifyNew(fresh) {
+  const r = fresh[fresh.length - 1];
+  showToast(fresh.some(x => x.waiting)
+    ? `Dirección nueva en ${symOf(r.coin)}: elige a qué sitio pertenece`
+    : `${r.dir === 'out' ? 'Enviaste' : 'Recibiste'} ${fmtCoin(r.amount)} ${symOf(r.coin)}${r.pending ? ' (pendiente)' : ''}`);
+}
+
+async function ingest(recs, live) {
+  const fresh = [];
+  let changed = false;
+  for (const r of recs) {
+    if (!r) continue;
+    const key = r.net + ':' + r.txid + (r.idx ? ':' + r.idx : '');
+    const old = state.chain.txs[key];
+    if (old) { // ya vista: solo puede pasar de pendiente a confirmada
+      if (old.pending && !r.pending) { old.pending = false; old.time = r.time; confirmMovement(old); changed = true; }
+      continue;
+    }
+    if (r.dir === 'self' || !(r.amount > 0)) { state.chain.txs[key] = { key, skip: true }; continue; }
+    fresh.push({ ...r, key });
+  }
+  for (const r of fresh) r.usd = await usdValue(r);
+  for (const r of fresh) {
+    delete r.idx;
+    state.chain.txs[r.key] = r;
+    assignTx(r);
+    if (live) adjustBasis(r);
+  }
+  if (fresh.length) { changed = true; if (live) notifyNew(fresh); }
+  syncHoldings();
+  if (changed) { render(); renderChainPeers(); }
+  renderCrypto();
+  saveState(true);
+}
+
+async function syncAddress(cfg, address, gen) {
+  const k = addrKey(cfg.net, address);
+  if (chainRun.busy[k]) { chainRun.again[k] = true; return; }
+  chainRun.busy[k] = true;
+  try {
+    const recs = await SYNCERS[cfg.net](cfg, address);
+    if (gen !== chainRun.gen) return; // las wallets cambiaron mientras tanto
+    // Lo que pasó mientras estuvo cerrado cuenta como nuevo; la primera vez es historial
+    await ingest(recs, !!state.chain.syncedAt[k]);
+    state.chain.syncedAt[k] = Date.now();
+    chainRun.status[cfg.net] = { st: cfg.every ? 'poll' : 'live' };
+  } catch (e) {
+    console.warn('Wallets ' + cfg.net + ':', e);
+    chainRun.status[cfg.net] = { st: 'error', msg: e.message };
+  } finally {
+    chainRun.busy[k] = false;
+    renderWallets();
+    if (chainRun.again[k]) { chainRun.again[k] = false; syncAddress(cfg, address, gen); }
+  }
+}
+function syncSoon(cfg, address, gen) { // los avisos llegan en ráfaga: una sola consulta
+  const k = addrKey(cfg.net, address);
+  clearTimeout(chainRun.debounce[k]);
+  chainRun.debounce[k] = setTimeout(() => syncAddress(cfg, address, gen), 1500);
+}
+
+function openSocket(url, gen, onOpen, onMsg) {
+  let delay = 3000, first = true;
+  const connect = () => {
+    if (gen !== chainRun.gen) return;
+    const ws = new WebSocket(url);
+    chainRun.sockets.push(ws);
+    ws.onopen = () => { delay = 3000; onOpen(ws, first); first = false; };
+    ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) {} };
+    ws.onclose = () => { if (gen === chainRun.gen) setTimeout(connect, delay = Math.min(delay * 2, 60000)); };
+  };
+  connect();
+}
+
+// Arranca (o reinicia) el seguimiento: historial al abrir y luego en vivo
+function startChain() {
+  chainRun.gen++;
+  chainRun.sockets.forEach(ws => { ws.onclose = null; try { ws.close(); } catch (e) {} });
+  chainRun.timers.forEach(clearInterval);
+  chainRun.sockets = [];
+  chainRun.timers = [];
+  chainRun.status = {};
+  const gen = chainRun.gen;
+  if (CHAIN_LIVE) {
+    for (const [sym, base] of Object.entries(NETS)) {
+      const cfg = { ...base, sym };
+      const addrs = walletAddrs(cfg.net);
+      if (!addrs.length) continue;
+      chainRun.status[cfg.net] = { st: 'sync' };
+      (async () => { for (const a of addrs) await syncAddress(cfg, a, gen); })();
+      if (cfg.every) {
+        chainRun.timers.push(setInterval(() => addrs.forEach(a => syncAddress(cfg, a, gen)), cfg.every));
+      } else if (cfg.net === 'sol') {
+        const subs = {};
+        openSocket(cfg.ws, gen, (ws, first) => {
+          addrs.forEach((a, i) => ws.send(JSON.stringify({ jsonrpc: '2.0', id: i + 1, method: 'accountSubscribe', params: [a, { encoding: 'base64', commitment: 'confirmed' }] })));
+          if (!first) addrs.forEach(a => syncSoon(cfg, a, gen));
+        }, m => {
+          if (m.id && typeof m.result === 'number') subs[m.result] = addrs[m.id - 1];
+          const a = m.method === 'accountNotification' && subs[m.params.subscription];
+          if (a) syncSoon(cfg, a, gen);
+        });
+      } else {
+        addrs.forEach(a => openSocket(cfg.ws, gen, (ws, first) => {
+          ws.send(JSON.stringify({ 'track-address': a }));
+          if (!first) syncSoon(cfg, a, gen);
+        }, m => {
+          if (m['address-transactions'] || m['block-transactions'] || m['address-removed-transactions']) syncSoon(cfg, a, gen);
+        }));
+      }
+      // Por si se perdió algún aviso del WebSocket
+      if (!cfg.every) chainRun.timers.push(setInterval(() => addrs.forEach(a => syncAddress(cfg, a, gen)), 5 * 60000));
+    }
+  }
+  renderWallets();
+  renderChainPeers();
+}
+
+// ---- Aviso de direcciones nuevas en Movimientos ----
+function renderChainPeers() {
+  const box = document.getElementById('chain-peers');
+  const groups = {};
+  for (const r of Object.values(state.chain.txs)) {
+    if (!r.waiting) continue;
+    const k = peerKey(r);
+    const g = groups[k] || (groups[k] = { key: k, net: r.net, coin: r.coin, peer: r.peer, n: 0, usd: 0, dirs: new Set() });
+    g.n++;
+    g.usd += r.usd || 0;
+    g.dirs.add(r.dir === 'out' ? 'enviaste' : 'recibiste');
+  }
+  const all = Object.values(groups).sort((a, b) => b.n - a.n || b.usd - a.usd);
+  const list = all.slice(0, 8); // las que más movimientos tienen; el resto aparece al asignar estas
+  box.hidden = !list.length;
+  if (!list.length) { box.innerHTML = ''; return; }
+  const sites = [...new Set([...state.sites.filter(s => !s.general).map(s => s.name),
+                             ...Object.values(state.chain.peers).filter(v => v !== IGNORE)])];
+  box.innerHTML = `
+    <div class="peers-title">Direcciones nuevas <span>· elige a qué sitio pertenece cada una; se recuerda para las próximas</span></div>
+    ${list.map(g => `
+      <div class="peer-row" data-peer="${escHtml(g.key)}">
+        <div class="peer-info">
+          <span class="coin-sym">${escHtml(symOf(g.coin))}</span>
+          <span class="addr" title="${escHtml(g.peer || '')}">${g.peer ? escHtml(shortAddr(g.peer)) : 'sin dirección (contrato o programa)'}</span>
+          <span class="peer-meta">${g.n} movimiento${g.n !== 1 ? 's' : ''} · ${fmt(g.usd)} · ${[...g.dirs].join(' y ')}</span>
+        </div>
+        <input class="peer-site" list="peer-sites" placeholder="Sitio (ej. Roobet)" />
+        <button class="btn-add-tx" type="button" data-act="asignar">Asignar</button>
+        <button class="btn-refresh" type="button" data-act="ignorar" title="Es una transferencia entre tus propias wallets">Ignorar (es mía)</button>
+      </div>`).join('')}
+    ${all.length > list.length ? `<div class="peer-meta">y ${all.length - list.length} direcciones más</div>` : ''}
+    <datalist id="peer-sites">${sites.map(n => `<option value="${escHtml(n)}"></option>`).join('')}</datalist>`;
+}
+document.getElementById('chain-peers').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const row = btn.closest('[data-peer]');
+  let site = IGNORE;
+  if (btn.dataset.act === 'asignar') {
+    const inp = row.querySelector('.peer-site');
+    site = inp.value.trim();
+    if (!site) { inp.style.borderColor = '#f05b6a'; setTimeout(() => { inp.style.borderColor = ''; }, 1200); inp.focus(); return; }
+  }
+  state.chain.peers[row.dataset.peer] = site;
+  let n = 0;
+  for (const r of Object.values(state.chain.txs)) {
+    if (r.waiting && peerKey(r) === row.dataset.peer) { assignTx(r); n++; }
+  }
+  render();
+  renderChainPeers();
+  saveState();
+  showToast(site === IGNORE ? `Ignorada (${n} movimiento${n !== 1 ? 's' : ''})` : `${n} movimiento${n !== 1 ? 's' : ''} asignado${n !== 1 ? 's' : ''} a ${site}`);
+});
 
 // =====================================================
 // ---- SKINS CS2 (precios de CSFloat vía /api/skins) ----
@@ -2510,6 +3010,7 @@ refreshStocks();
 refreshSkins();
 renderExplore();
 renderQuickPop();
+startChain();
 </script>
 </body>
 </html>
