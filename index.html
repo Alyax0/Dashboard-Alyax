@@ -1710,7 +1710,7 @@ function walletStatus(cfg) {
   if (st.st === 'error') return `<span class="w-status err" title="${escHtml(st.msg)}">⚠ ${escHtml(st.msg.slice(0, 70))}</span>`;
   if (st.st === 'sync') return '<span class="w-status">sincronizando…</span>';
   if (st.st === 'live') return '<span class="w-status ok"><span class="live-dot"></span>en vivo</span>';
-  if (st.st === 'poll') return `<span class="w-status ok"><span class="live-dot"></span>cada ${cfg.every / 1000} s</span>`;
+  if (st.st === 'poll') return `<span class="w-status ok"><span class="live-dot"></span>${cfg.balanceOnly ? 'saldo ' : ''}cada ${cfg.every / 1000} s</span>`;
   return '';
 }
 
@@ -1726,8 +1726,10 @@ function renderWallets() {
   }
   const groups = [];
   for (const w of state.wallets) {
-    let g = groups.find(x => x.coin === w.coin);
-    if (!g) groups.push(g = { coin: w.coin, items: [] });
+    const c = walletCfg(w);
+    const gk = w.coin + (c ? '|' + c.net : '');
+    let g = groups.find(x => x.key === gk);
+    if (!g) groups.push(g = { key: gk, coin: w.coin, cfg: c, items: [] });
     g.items.push(w);
   }
   wrap.innerHTML = `
@@ -1735,16 +1737,17 @@ function renderWallets() {
       <thead><tr><th>Nombre</th><th>Dirección</th><th>Saldo</th><th></th><th></th></tr></thead>
       <tbody>
         ${groups.map(g => {
-          const cfg = NETS[g.coin];
+          const cfg = g.cfg;
+          const gid = (COINS.find(c => c.sym === g.coin) || {}).id || (cfg && cfg.coin);
           const totals = {};
           if (cfg) g.items.forEach(w => Object.entries(state.chain.bal[addrKey(cfg.net, w.address)] || {})
             .forEach(([c, v]) => { totals[c] = (totals[c] || 0) + v; }));
-          const sum = Object.entries(totals).filter(([c, v]) => v > 0 || c === cfg.coin).map(([c, v]) => {
+          const sum = Object.entries(totals).filter(([c, v]) => v > 0 || c === gid).map(([c, v]) => {
             const p = isStable(c) ? 1 : ticker[c] && ticker[c].usd;
             return `${fmtCoin(v)} ${symOf(c)}${p ? ' ≈ ' + fmt(v * p) : ''}`;
           }).join(' · ');
           return `
-            <tr class="w-group"><td colspan="5"><span class="coin-sym">${escHtml(g.coin)}</span>
+            <tr class="w-group"><td colspan="5"><span class="coin-sym">${escHtml(g.coin + tokenTag(g.coin, cfg))}</span>
               <span class="w-meta">${g.items.length} ${g.items.length !== 1 ? 'direcciones' : 'dirección'}${sum ? ' · ' + sum : ''}</span>
               ${CHAIN_LIVE ? walletStatus(cfg) : ''}</td></tr>` + g.items.map(w => {
             const short = w.address.length > 22 ? w.address.slice(0, 10) + '…' + w.address.slice(-8) : w.address;
@@ -1753,7 +1756,7 @@ function renderWallets() {
               <tr>
                 <td class="coin-sym">${escHtml(w.name)}</td>
                 <td class="addr" title="${escHtml(w.address)}">${escHtml(short)}</td>
-                <td class="mono">${bal ? fmtCoin(bal[cfg.coin] || 0) + ' ' + escHtml(g.coin) : '—'}</td>
+                <td class="mono">${bal ? fmtCoin(bal[gid] || 0) + ' ' + escHtml(g.coin) : '—'}</td>
                 <td><button class="btn-refresh" onclick="copyAddr(${w.id})">copiar</button></td>
                 <td><button class="del-btn" onclick="deleteWallet(${w.id})" title="Eliminar">✕</button></td>
               </tr>`;
@@ -1777,10 +1780,17 @@ function addWallet() {
     showToast('Eso parece una clave privada o frase semilla. Nunca la pegues: solo la dirección pública de recibir.', true);
     return;
   }
-  const cfg = NETS[coin];
+  const cfg = netFor(coin, address);
   if (cfg && !cfg.re.test(address)) { flag(addrEl); showToast('Esa no parece una dirección de ' + coin, true); return; }
-  if (state.wallets.some(w => w.coin === coin && normAddr(cfg && cfg.net, w.address) === normAddr(cfg && cfg.net, address))) {
-    flag(addrEl); showToast('Esa dirección ya está guardada', true); return;
+  // Una dirección ya guardada en la misma red no se repite (en TRX y BNB ya se ven sus USDT y USDC)
+  const dup = state.wallets.find(w => {
+    const c = walletCfg(w);
+    return c && cfg ? c.net === cfg.net && normAddr(c.net, w.address) === normAddr(c.net, address) : w.coin === coin && w.address === address;
+  });
+  if (dup) {
+    flag(addrEl);
+    showToast(dup.coin === coin ? 'Esa dirección ya está guardada' : `Esa dirección ya está guardada como ${dup.coin}: ahí se ven también sus USDT y USDC`, true);
+    return;
   }
   state.wallets.push({ id: state.nextWalletId++, name, coin, address });
   nameEl.value = '';
@@ -1794,7 +1804,7 @@ function deleteWallet(id) {
   if (!confirm('¿Eliminar esta wallet?')) return;
   const w = state.wallets.find(x => x.id === id);
   state.wallets = state.wallets.filter(x => x.id !== id);
-  const cfg = w && NETS[w.coin];
+  const cfg = w && walletCfg(w);
   if (cfg && !walletAddrs(cfg.net).includes(normAddr(cfg.net, w.address))) delete state.chain.bal[addrKey(cfg.net, w.address)];
   // Las monedas que ya no salen de ninguna wallet vuelven a ser posiciones normales
   const still = walletCoins();
@@ -1842,11 +1852,25 @@ const NETS = {
          re: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/ },
   ETH: { net: 'eth', coin: 'ethereum', every: 20000, re: /^0x[0-9a-fA-F]{40}$/ },
   TRX: { net: 'trx', coin: 'tron', every: 15000, re: /^T[1-9A-HJ-NP-Za-km-z]{33}$/ },
+  // BNB Smart Chain: solo saldo (BNB + USDT/USDC BEP20). Los nodos gratis no dan el historial
+  BNB: { net: 'bsc', coin: 'binancecoin', every: 20000, balanceOnly: true, rpc: 'https://bsc-rpc.publicnode.com',
+         re: /^0x[0-9a-fA-F]{40}$/ },
 };
+// USDT y USDC van por la red que indica la dirección: T… = TRON (TRC20), 0x… = BNB Smart Chain (BEP20)
+function netFor(coin, address) {
+  if (NETS[coin]) return NETS[coin];
+  if (coin === 'USDT' || coin === 'USDC') {
+    if (NETS.TRX.re.test(address)) return NETS.TRX;
+    if (NETS.BNB.re.test(address)) return NETS.BNB;
+  }
+  return undefined;
+}
+const walletCfg = w => netFor(w.coin, w.address);
+const tokenTag = (coin, cfg) => (cfg && (coin === 'USDT' || coin === 'USDC') ? (cfg.net === 'bsc' ? ' · BEP20' : ' · TRC20') : '');
 const chainRun = { gen: 0, sockets: [], timers: [], busy: {}, again: {}, status: {}, debounce: {} };
 const dayPrices = {}; // coin -> promesa de { 'YYYY-MM-DD': precio }
 
-const normAddr = (net, a) => (a && net === 'eth' ? a.toLowerCase() : a);
+const normAddr = (net, a) => (a && (net === 'eth' || net === 'bsc') ? a.toLowerCase() : a);
 const addrKey = (net, a) => net + ':' + normAddr(net, a);
 const shortAddr = a => (a && a.length > 14 ? a.slice(0, 6) + '…' + a.slice(-4) : a || '');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1857,13 +1881,13 @@ const isStable = coin => coin === 'tether' || coin === 'usd-coin';
 const peerKey = r => r.net + ':' + (r.peer || '?');
 
 function walletAddrs(net) {
-  return [...new Set(state.wallets.filter(w => NETS[w.coin] && NETS[w.coin].net === net).map(w => normAddr(net, w.address)))];
+  return [...new Set(state.wallets.filter(w => walletCfg(w) && walletCfg(w).net === net).map(w => normAddr(net, w.address)))];
 }
 // Monedas cuyo saldo en Cripto sale de una wallet
 function walletCoins() {
   const out = new Set();
   for (const w of state.wallets) {
-    const cfg = NETS[w.coin];
+    const cfg = walletCfg(w);
     if (!cfg) continue;
     out.add(cfg.coin);
     const b = state.chain.bal[addrKey(cfg.net, w.address)] || {};
@@ -1994,7 +2018,35 @@ async function syncApi(cfg, address) {
   setBalance(cfg.net, address, d.balances);
   return recs;
 }
-const SYNCERS = { btc: syncEsplora, ltc: syncEsplora, sol: syncSol, eth: syncApi, trx: syncApi };
+// ---- BNB Smart Chain: solo saldo, con el nodo público ----
+const BEP20 = { tether: '0x55d398326f99059ff775485246999027b3197955', 'usd-coin': '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d' }; // 18 decimales
+async function bscRpc(method, params) {
+  const d = await getJSON(NETS.BNB.rpc, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+  if (d.error) throw new Error('BSC: ' + d.error.message);
+  return d.result;
+}
+const weiToNum = hex => Number(BigInt(hex || '0x0')) / 1e18;
+async function syncBsc(cfg, address) {
+  const bal = { binancecoin: weiToNum(await bscRpc('eth_getBalance', [address, 'latest'])) };
+  for (const [coin, token] of Object.entries(BEP20)) {
+    const v = weiToNum(await bscRpc('eth_call', [{ to: token, data: '0x70a08231' + address.slice(2).padStart(64, '0') }, 'latest']));
+    if (v > 0) bal[coin] = v;
+  }
+  // Sin historial: lo que entra o sale ajusta el costo en Cripto al precio de ahora
+  const k = addrKey('bsc', address), prev = state.chain.bal[k];
+  if (prev && state.chain.syncedAt[k]) {
+    for (const coin of new Set([...Object.keys(prev), ...Object.keys(bal)])) {
+      const delta = (bal[coin] || 0) - (prev[coin] || 0);
+      if (Math.abs(delta) < 1e-9 || isStable(coin)) continue;
+      const price = (ticker[coin] && ticker[coin].usd) || prices[coin] || 0;
+      adjustBasis({ coin, dir: delta > 0 ? 'in' : 'out', amount: Math.abs(delta), usd: r2(Math.abs(delta) * price) });
+    }
+  }
+  setBalance('bsc', address, bal);
+  return [];
+}
+const SYNCERS = { btc: syncEsplora, ltc: syncEsplora, sol: syncSol, eth: syncApi, trx: syncApi, bsc: syncBsc };
 
 // ---- Guardar sin duplicados, valuar, asignar a un sitio y actualizar Cripto ----
 async function usdValue(r) {
@@ -2044,9 +2096,13 @@ function adjustBasis(r) {
 // Cantidad en Cripto = suma de los saldos de las wallets de esa moneda
 function syncHoldings() {
   const totals = {};
+  const seen = new Set();
   for (const w of state.wallets) {
-    const cfg = NETS[w.coin];
-    const b = cfg && state.chain.bal[addrKey(cfg.net, w.address)];
+    const cfg = walletCfg(w);
+    const k = cfg && addrKey(cfg.net, w.address);
+    if (!k || seen.has(k)) continue; // la misma dirección no se cuenta dos veces
+    seen.add(k);
+    const b = state.chain.bal[k];
     if (b) Object.entries(b).forEach(([c, v]) => { totals[c] = (totals[c] || 0) + v; });
   }
   for (const [coin, amt] of Object.entries(totals)) {
@@ -2062,6 +2118,7 @@ function syncHoldings() {
     }
     if (amt <= 0) { state.holdings = state.holdings.filter(x => x !== h); continue; }
     h.amount = amt;
+    if (isStable(coin)) h.usd = r2(amt); // una stablecoin vale lo que costó: 1 USD
     h.entryPrice = h.usd / h.amount;
   }
 }
